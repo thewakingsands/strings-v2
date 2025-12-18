@@ -33,10 +33,18 @@ func LoadStore(dataDir string) (*Store, error) {
 		bySheetRow: make(map[string]map[string][]*Item),
 	}
 
-	pattern := filepath.Join(dataDir, "*.json")
-	files, err := filepath.Glob(pattern)
+	var files []string
+	err := filepath.Walk(dataDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() && strings.HasSuffix(info.Name(), ".json") {
+			files = append(files, path)
+		}
+		return nil
+	})
 	if err != nil {
-		return nil, fmt.Errorf("glob data files: %w", err)
+		return nil, fmt.Errorf("walk data files: %w", err)
 	}
 	if len(files) == 0 {
 		log.Printf("no data files found in %s", dataDir)
