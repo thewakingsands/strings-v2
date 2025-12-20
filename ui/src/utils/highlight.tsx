@@ -1,5 +1,9 @@
 import type { ReactNode } from 'react'
 
+const unescapeHtmlTags = (text: string) => {
+  return text.replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+}
+
 function highlightTextWithoutMark(
   text: string,
   query: string,
@@ -10,13 +14,17 @@ function highlightTextWithoutMark(
   const lowerQuery = query.toLowerCase()
   const index = lowerText.indexOf(lowerQuery)
 
-  if (index === -1) return [text]
+  if (index === -1) return [unescapeHtmlTags(text)]
 
   const before = text.substring(0, index)
   const match = text.substring(index, index + query.length)
   const after = text.substring(index + query.length)
 
-  return [before, <em key={`match-${lastIndex}-${index}`}>{match}</em>, after]
+  return [
+    unescapeHtmlTags(before),
+    <em key={`match-${lastIndex}-${index}`}>{match}</em>,
+    unescapeHtmlTags(after),
+  ]
 }
 
 const markRegex = /<mark>(.*?)<\/mark>/gi
