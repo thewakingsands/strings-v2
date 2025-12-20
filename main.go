@@ -19,18 +19,21 @@ type Item struct {
 	Sheet  string            `json:"sheet"`
 	RowID  string            `json:"rowId"`
 	Values map[string]string `json:"values"`
+	Index  int               `json:"index"`
 }
 
 // Store keeps all items in memory and provides simple lookup helpers.
 type Store struct {
 	items      []*Item
-	bySheetRow map[string]map[string][]*Item // sheet -> rowId -> items
+	bySheet    map[string][]*Item // sheet -> items
+	sheetIndex map[string]int     // sheet -> next index counter
 }
 
 // LoadStore loads all JSON files from dataDir into memory.
 func LoadStore(dataDir string) (*Store, error) {
 	s := &Store{
-		bySheetRow: make(map[string]map[string][]*Item),
+		bySheet:    make(map[string][]*Item),
+		sheetIndex: make(map[string]int),
 	}
 
 	var files []string
@@ -77,14 +80,21 @@ func (s *Store) loadFile(path string) error {
 		if it == nil {
 			continue
 		}
+
+		// Assign index based on sheet and order in file
+		// Index is unique per sheet and follows the order items appear in files
+		if _, ok := s.sheetIndex[it.Sheet]; !ok {
+			s.sheetIndex[it.Sheet] = 0
+		}
+		it.Index = s.sheetIndex[it.Sheet]
+		s.sheetIndex[it.Sheet]++
+
 		s.items = append(s.items, it)
 
-		rowMap, ok := s.bySheetRow[it.Sheet]
-		if !ok {
-			rowMap = make(map[string][]*Item)
-			s.bySheetRow[it.Sheet] = rowMap
+		if _, ok := s.bySheet[it.Sheet]; !ok {
+			s.bySheet[it.Sheet] = make([]*Item, 0)
 		}
-		rowMap[it.RowID] = append(rowMap[it.RowID], it)
+		s.bySheet[it.Sheet] = append(s.bySheet[it.Sheet], it)
 	}
 
 	return nil
@@ -139,7 +149,7 @@ func (s *Store) Search(lang, query, sheetFilter string, offset, limit int) []*It
 // GetBySheet returns items for a given sheet with pagination.
 // Returns early when offset+limit items are found to optimize performance.
 func (s *Store) GetBySheet(sheet string, offset, limit int) []*Item {
-	sheetMap, ok := s.bySheetRow[sheet]
+	sheetMap, ok := s.bySheet[sheet]
 	if !ok {
 		return nil
 	}
@@ -148,13 +158,11 @@ func (s *Store) GetBySheet(sheet string, offset, limit int) []*Item {
 	needed := offset + limit
 	results := make([]*Item, 0, needed)
 
-	for _, items := range sheetMap {
-		for _, item := range items {
-			results = append(results, item)
-			// Return early if we have enough results
-			if len(results) >= needed {
-				goto done
-			}
+	for _, item := range sheetMap {
+		results = append(results, item)
+		// Return early if we have enough results
+		if len(results) >= needed {
+			goto done
 		}
 	}
 

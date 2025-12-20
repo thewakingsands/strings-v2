@@ -1,0 +1,29 @@
+{
+  "name": "@wakingsands/text-helper-web",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "lint": "biome check .",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@blueprintjs/core": "^6.4.1",
+    "@blueprintjs/icons": "^6.3.2",
+    "@emotion/styled": "^11.14.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "use-debounce": "^10.0.6"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.2.7",
+    "@types/node": "^24.6.0",
+    "@types/react": "^18.3.16",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react-swc": "^4.1.0",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.0"
+  }
+}

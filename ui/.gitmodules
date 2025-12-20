@@ -1,0 +1,12 @@
+[submodule "lib/zi-dataset"]
+	path = lib/zi-dataset
+	url = git@github.com:secsilm/zi-dataset.git
+[submodule "lib/chinese-frequency-word-list"]
+	path = lib/chinese-frequency-word-list
+	url = git@github.com:liangqi/chinese-frequency-word-list.git
+[submodule "lib/chinese-poetry"]
+	path = lib/chinese-poetry
+	url = git@github.com:CanvaChen/llm-dataset-chinese-poetry.git
+[submodule "lib/chinese-xinhua"]
+	path = lib/chinese-xinhua
+	url = git@github.com:pwxcoo/chinese-xinhua.git
