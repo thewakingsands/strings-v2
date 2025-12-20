@@ -304,8 +304,8 @@ func main() {
 	server := &Server{store: store}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/search", server.handleSearch)
-	mux.HandleFunc("/items", server.handleItems)
+	mux.HandleFunc("/api/search", server.handleSearch)
+	mux.HandleFunc("/api/items", server.handleItems)
 
 	srv := &http.Server{
 		Addr:         *addr,
