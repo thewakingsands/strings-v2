@@ -1,21 +1,10 @@
 package store
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
-	"os"
-	"path/filepath"
 	"strings"
 )
-
-// Item represents one string entry exported from ixion (per sheet/row).
-type Item struct {
-	Sheet  string            `json:"sheet"`
-	RowID  string            `json:"rowId"`
-	Values map[string]string `json:"values"`
-	Index  int               `json:"index"`
-}
 
 // Store keeps all items in memory and provides simple lookup helpers.
 type Store struct {
@@ -31,26 +20,21 @@ func LoadStore(dataDir string) (*Store, error) {
 		sheetIndex: make(map[string]int),
 	}
 
-	var files []string
-	err := filepath.Walk(dataDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if !info.IsDir() && strings.HasSuffix(info.Name(), ".json") {
-			files = append(files, path)
-		}
-		return nil
-	})
+	files, err := scanDataFiles(dataDir)
 	if err != nil {
-		return nil, fmt.Errorf("walk data files: %w", err)
+		return nil, fmt.Errorf("scan data files: %w", err)
 	}
 	if len(files) == 0 {
 		log.Printf("no data files found in %s", dataDir)
 	}
 
 	for _, path := range files {
-		if err := s.loadFile(path); err != nil {
-			return nil, err
+		items, err := loadFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("load file %s: %w", path, err)
+		}
+		for _, it := range items {
+			s.addItem(it)
 		}
 	}
 
@@ -58,41 +42,21 @@ func LoadStore(dataDir string) (*Store, error) {
 	return s, nil
 }
 
-func (s *Store) loadFile(path string) error {
-	f, err := os.Open(path)
-	if err != nil {
-		return fmt.Errorf("open %s: %w", path, err)
+func (s *Store) addItem(it *Item) {
+	// Assign index based on sheet and order in file
+	// Index is unique per sheet and follows the order items appear in files
+	if _, ok := s.sheetIndex[it.Sheet]; !ok {
+		s.sheetIndex[it.Sheet] = 0
 	}
-	defer f.Close()
+	it.Index = s.sheetIndex[it.Sheet]
+	s.sheetIndex[it.Sheet]++
 
-	decoder := json.NewDecoder(f)
-	var arr []*Item
-	if err := decoder.Decode(&arr); err != nil {
-		return fmt.Errorf("decode %s: %w", path, err)
+	s.items = append(s.items, it)
+
+	if _, ok := s.bySheet[it.Sheet]; !ok {
+		s.bySheet[it.Sheet] = make([]*Item, 0)
 	}
-
-	for _, it := range arr {
-		if it == nil {
-			continue
-		}
-
-		// Assign index based on sheet and order in file
-		// Index is unique per sheet and follows the order items appear in files
-		if _, ok := s.sheetIndex[it.Sheet]; !ok {
-			s.sheetIndex[it.Sheet] = 0
-		}
-		it.Index = s.sheetIndex[it.Sheet]
-		s.sheetIndex[it.Sheet]++
-
-		s.items = append(s.items, it)
-
-		if _, ok := s.bySheet[it.Sheet]; !ok {
-			s.bySheet[it.Sheet] = make([]*Item, 0)
-		}
-		s.bySheet[it.Sheet] = append(s.bySheet[it.Sheet], it)
-	}
-
-	return nil
+	s.bySheet[it.Sheet] = append(s.bySheet[it.Sheet], it)
 }
 
 // Search finds items whose value in the given language contains the query substring.
