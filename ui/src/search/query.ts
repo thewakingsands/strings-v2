@@ -4,6 +4,7 @@ export interface ApiResponse<T> {
   data: T
   meta: {
     elapsed: string
+    total: number
   }
 }
 

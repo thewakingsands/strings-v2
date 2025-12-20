@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { StringItem } from './interface'
+import { emptySearchResult, type SearchResult } from './interface'
 import { type IFileLineProps, linesByFile } from './linesByFile'
 import { type IKeywordProps, linesByKeyword } from './linesByKeyword'
 
@@ -9,7 +9,7 @@ export interface ISearchQuery {
 }
 
 export function useSearch(initialQuery: ISearchQuery | null | undefined) {
-  const [result, setResult] = useState<StringItem[]>([])
+  const [result, setResult] = useState<SearchResult>(emptySearchResult)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<Error | null>(null)
   const [query, setQuery] = useState<ISearchQuery | null | undefined>(
@@ -29,7 +29,7 @@ export function useSearch(initialQuery: ISearchQuery | null | undefined) {
           } else if (query.file) {
             setResult(await linesByFile(query.file, abort.signal))
           } else {
-            setResult([])
+            setResult(emptySearchResult)
           }
         }
       } catch (e) {

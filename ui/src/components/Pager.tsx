@@ -3,53 +3,84 @@ import styled from '@emotion/styled'
 
 const PagerContainer = styled.div({
   textAlign: 'center',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  gap: '12px',
-})
-
-const PageInfo = styled.span({
-  fontSize: '14px',
-  minWidth: '80px',
-  textAlign: 'center',
 })
 
 export interface IPagerProps {
   current: number
-  hasMore: boolean
+  total: number
   onPageChange: (page: number) => void
 }
 
 export function Pager(props: IPagerProps) {
-  const isFirstPage = props.current <= 1
-  const hasNoMore = !props.hasMore
+  const pages = Array.from(
+    new Set<number>([
+      1,
+      props.total,
+      props.current - 1,
+      props.current - 2,
+      props.current - 3,
+      props.current,
+      props.current + 1,
+      props.current + 2,
+      props.current + 3,
+    ]),
+  )
+    .filter((x) => x > 0 && x <= props.total)
+    .sort((a, b) => a - b)
+
+  const children = []
+
+  let lastPage: number | undefined
+  for (const page of pages) {
+    if (lastPage !== undefined && page !== lastPage + 1) {
+      children.push(
+        <Button key={`before${page}`} text="..." disabled minimal />,
+      )
+    }
+    children.push(renderPageButton(page, props))
+
+    lastPage = page
+  }
 
   return (
     <PagerContainer>
-      <ButtonGroup>
-        <Button
-          icon="double-chevron-left"
-          text="首页"
-          onClick={() => props.onPageChange(1)}
-          disabled={isFirstPage}
-        />
-        <Button
-          icon="chevron-left"
-          text="上一页"
-          onClick={() => props.onPageChange(props.current - 1)}
-          disabled={isFirstPage}
-        />
-      </ButtonGroup>
-      <PageInfo>第 {props.current} 页</PageInfo>
-      <ButtonGroup>
-        <Button
-          endIcon="chevron-right"
-          text="下一页"
-          onClick={() => props.onPageChange(props.current + 1)}
-          disabled={hasNoMore}
-        />
-      </ButtonGroup>
+      <ButtonGroup>{children}</ButtonGroup>
     </PagerContainer>
   )
+}
+
+function renderPageButton(page: number, props: IPagerProps) {
+  const handleClick = () => props.onPageChange(page)
+  if (page === props.current) {
+    return (
+      <Button key={page} text={page} disabled minimal onClick={handleClick} />
+    )
+  }
+  if (page === props.current - 1) {
+    return <Button key={page} icon="chevron-left" onClick={handleClick} />
+  }
+  if (page === props.current + 1) {
+    return <Button key={page} endIcon="chevron-right" onClick={handleClick} />
+  }
+  if (page === 1) {
+    return (
+      <Button
+        key={page}
+        text="1"
+        icon="double-chevron-left"
+        onClick={handleClick}
+      />
+    )
+  }
+  if (page === props.total) {
+    return (
+      <Button
+        key={page}
+        text={page}
+        endIcon="double-chevron-right"
+        onClick={handleClick}
+      />
+    )
+  }
+  return <Button key={page} text={page} onClick={handleClick} />
 }

@@ -106,8 +106,8 @@ export default function App() {
   }
 
   const page = search.query?.keyword?.page || 0
-  const hasMore = search.result.length === PAGE_SIZE
-  const showPager = !search.isLoading && page > 0 && search.result.length > 0
+  const total = Math.ceil(search.result.total / PAGE_SIZE)
+  const showPager = !search.isLoading && page > 0 && total > 0
 
   const handlePageChange = (page: number) => {
     search.setPage(page)
@@ -115,7 +115,7 @@ export default function App() {
 
   const pager = showPager && (
     <MarginedDiv>
-      <Pager current={page} hasMore={hasMore} onPageChange={handlePageChange} />
+      <Pager current={page} total={total} onPageChange={handlePageChange} />
     </MarginedDiv>
   )
 
@@ -145,7 +145,7 @@ export default function App() {
             ) : search.result ? (
               <SearchResult
                 keyword={search.query?.keyword?.keyword || ''}
-                items={search.result}
+                items={search.result.items}
                 onContextButtonClick={handleContextClick}
                 highlightItem={highlightItem || undefined}
               />

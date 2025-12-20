@@ -1,4 +1,4 @@
-import type { StringItem } from './interface'
+import type { SearchResult } from './interface'
 import { itemsApi } from './query'
 
 export interface IFileLineProps {
@@ -10,7 +10,7 @@ export interface IFileLineProps {
 export async function linesByFile(
   props: IFileLineProps,
   signal?: AbortSignal,
-): Promise<StringItem[]> {
+): Promise<SearchResult> {
   const sheet = props.sheet.replace(/\.json$/, '')
   const limit = props.indexHigher - props.indexLower + 1
   const offset = props.indexLower
@@ -24,5 +24,8 @@ export async function linesByFile(
     signal,
   )
 
-  return response.data
+  return {
+    items: response.data,
+    total: response.meta.total,
+  }
 }

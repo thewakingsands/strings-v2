@@ -1,4 +1,4 @@
-import type { StringItem } from './interface'
+import { emptySearchResult, type SearchResult } from './interface'
 import { searchApi } from './query'
 
 export interface IKeywordProps {
@@ -11,9 +11,9 @@ export interface IKeywordProps {
 export async function linesByKeyword(
   { keyword, pageSize, page, language }: IKeywordProps,
   signal?: AbortSignal,
-): Promise<StringItem[]> {
+): Promise<SearchResult> {
   if (!keyword) {
-    return []
+    return emptySearchResult
   }
 
   // Search in the selected language only
@@ -27,5 +27,8 @@ export async function linesByKeyword(
     signal,
   )
 
-  return response.data
+  return {
+    items: response.data,
+    total: response.meta.total,
+  }
 }
