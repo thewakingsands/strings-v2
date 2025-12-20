@@ -302,6 +302,7 @@ func (s *Server) handleItems(w http.ResponseWriter, r *http.Request) {
 func main() {
 	addr := flag.String("addr", ":8080", "listen address (e.g. :8080)")
 	dataDir := flag.String("data", "data", "directory containing JSON data files")
+	uiDir := flag.String("ui", "ui/dist", "directory containing UI static files")
 	flag.Parse()
 
 	store, err := LoadStore(*dataDir)
@@ -312,8 +313,37 @@ func main() {
 	server := &Server{store: store}
 
 	mux := http.NewServeMux()
+
+	// API routes
 	mux.HandleFunc("/api/search", server.handleSearch)
 	mux.HandleFunc("/api/items", server.handleItems)
+
+	// Serve static files from UI directory
+	// For SPA routing: serve index.html for non-API routes that don't match files
+	fs := http.FileServer(http.Dir(*uiDir))
+	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Skip API routes (they're already handled above)
+		if strings.HasPrefix(r.URL.Path, "/api/") {
+			http.NotFound(w, r)
+			return
+		}
+
+		// Check if the requested file exists
+		path := filepath.Join(*uiDir, r.URL.Path)
+		if info, err := os.Stat(path); err == nil && !info.IsDir() {
+			// File exists, serve it
+			fs.ServeHTTP(w, r)
+			return
+		}
+
+		// File doesn't exist or is a directory, serve index.html for SPA routing
+		indexPath := filepath.Join(*uiDir, "index.html")
+		if _, err := os.Stat(indexPath); err == nil {
+			http.ServeFile(w, r, indexPath)
+		} else {
+			http.NotFound(w, r)
+		}
+	}))
 
 	srv := &http.Server{
 		Addr:         *addr,
@@ -322,7 +352,7 @@ func main() {
 		WriteTimeout: 10 * time.Second,
 	}
 
-	log.Printf("xivstrings API listening on %s (data dir: %s)", *addr, *dataDir)
+	log.Printf("xivstrings server listening on %s (data dir: %s, ui dir: %s)", *addr, *dataDir, *uiDir)
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("server error: %v", err)
 	}
