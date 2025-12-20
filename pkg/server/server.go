@@ -5,7 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"xivstrings/pkg/store"
 )
@@ -21,7 +20,6 @@ type Server struct {
 //
 // GET /search?lang=en&q=battle[&sheet=AchievementKind][&offset=0][&limit=100]
 func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
-	start := time.Now()
 	if r.Method != http.MethodGet {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
@@ -30,7 +28,6 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
 	lang := strings.TrimSpace(query.Get("lang"))
 	q := strings.TrimSpace(query.Get("q"))
-	sheet := strings.TrimSpace(query.Get("sheet"))
 
 	if lang == "" {
 		writeError(w, http.StatusBadRequest, "missing lang query parameter")
@@ -42,8 +39,21 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	}
 
 	offset, limit := parseOffsetLimit(query)
-	results := s.store.Search(lang, q, sheet, offset, limit)
-	writeJSONWithMeta(w, http.StatusOK, results, time.Since(start))
+	results, err := s.store.Search(lang, q, offset, limit)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	response := map[string]any{
+		"data": results.Items,
+		"meta": map[string]any{
+			"elapsed": results.Elapsed.String(),
+			"total":   results.Total,
+		},
+	}
+
+	writeJSON(w, http.StatusOK, response)
 }
 
 // handleItems implements:
@@ -51,7 +61,6 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 //
 // GET /items?sheet=AchievementKind[&offset=0][&limit=100]
 func (s *Server) handleItems(w http.ResponseWriter, r *http.Request) {
-	start := time.Now()
 	if r.Method != http.MethodGet {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
@@ -66,13 +75,21 @@ func (s *Server) handleItems(w http.ResponseWriter, r *http.Request) {
 	}
 
 	offset, limit := parseOffsetLimit(query)
-	items := s.store.GetBySheet(sheet, offset, limit)
-	if len(items) == 0 {
-		writeError(w, http.StatusNotFound, "no items found for given sheet")
+	results, err := s.store.GetBySheet(sheet, offset, limit)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	writeJSONWithMeta(w, http.StatusOK, items, time.Since(start))
+	response := map[string]any{
+		"data": results.Items,
+		"meta": map[string]any{
+			"elapsed": results.Elapsed.String(),
+			"total":   results.Total,
+		},
+	}
+
+	writeJSON(w, http.StatusOK, response)
 }
 
 type ServerConfig struct {

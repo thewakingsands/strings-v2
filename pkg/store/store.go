@@ -3,245 +3,155 @@ package store
 import (
 	"fmt"
 	"log"
-	"strconv"
+	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/blevesearch/bleve/v2"
-	"github.com/blevesearch/bleve/v2/search/query"
 )
 
 // Store keeps all items in memory and provides simple lookup helpers.
 type Store struct {
-	items      []*Item
-	bySheet    map[string][]*Item // sheet -> items
-	sheetIndex map[string]int     // sheet -> next index counter
-	index      bleve.Index        // Bleve search index
+	index bleve.Index // Bleve search index
+}
+
+type SearchResult struct {
+	Items   []*Item
+	Total   uint64
+	Elapsed time.Duration
 }
 
 // LoadStore loads all JSON files from dataDir into memory.
 func LoadStore(dataDir string) (*Store, error) {
-	// Create Bleve index mapping
-	indexMapping := bleve.NewIndexMapping()
+	indexDir := filepath.Join(dataDir, "index")
+	idx, err := bleve.Open(indexDir)
+	if err == bleve.ErrorIndexPathDoesNotExist {
+		log.Printf("Creating new index...")
 
-	// Define document mapping for Item
-	itemMapping := bleve.NewDocumentMapping()
+		mapping := buildItemIndex()
+		idx, err = bleve.New(indexDir, mapping)
+		if err != nil {
+			return nil, fmt.Errorf("create bleve index: %w", err)
+		}
 
-	// Sheet field mapping - use keyword analyzer for exact matching
-	sheetFieldMapping := bleve.NewTextFieldMapping()
-	sheetFieldMapping.Analyzer = "keyword"
-	sheetFieldMapping.Store = false
-	sheetFieldMapping.Index = true
-	itemMapping.AddFieldMappingsAt("sheet", sheetFieldMapping)
+		files, err := scanDataFiles(dataDir)
+		if err != nil {
+			return nil, fmt.Errorf("scan data files: %w", err)
+		}
 
-	// Set default mapping to use keyword analyzer for all fields (language values)
-	// This enables wildcard substring matching for CJK and other languages
-	indexMapping.DefaultMapping = itemMapping
-	indexMapping.DefaultAnalyzer = "keyword"
+		log.Printf("loading %d files", len(files))
 
-	// Create in-memory Bleve index
-	idx, err := bleve.NewMemOnly(indexMapping)
-	if err != nil {
+		count := 0
+		sheetIndex := make(map[string]uint32)
+		for _, path := range files {
+			items, err := loadFile(path)
+			if err != nil {
+				return nil, fmt.Errorf("load file %s: %w", path, err)
+			}
+
+			for _, it := range items {
+				// Assign index based on sheet and order in file
+				// Index is unique per sheet and follows the order items appear in files
+				if _, ok := sheetIndex[it.Sheet]; !ok {
+					sheetIndex[it.Sheet] = 0
+				}
+				it.Index = sheetIndex[it.Sheet]
+				sheetIndex[it.Sheet]++
+			}
+
+			// Index the item in Bleve
+			err = indexItems(idx, items)
+			if err != nil {
+				return nil, fmt.Errorf("index items: %w", err)
+			}
+
+			count += len(items)
+		}
+
+		log.Printf("loaded %d items from %d files", count, len(files))
+	} else if err != nil {
 		return nil, fmt.Errorf("create bleve index: %w", err)
 	}
 
 	s := &Store{
-		bySheet:    make(map[string][]*Item),
-		sheetIndex: make(map[string]int),
-		index:      idx,
+		index: idx,
 	}
 
-	files, err := scanDataFiles(dataDir)
-	if err != nil {
-		return nil, fmt.Errorf("scan data files: %w", err)
-	}
-
-	log.Printf("loading %d files", len(files))
-	for _, path := range files {
-		items, err := loadFile(path)
-		if err != nil {
-			return nil, fmt.Errorf("load file %s: %w", path, err)
-		}
-		for _, it := range items {
-			s.addItem(it)
-		}
-	}
-
-	log.Printf("loaded %d items from %d files", len(s.items), len(files))
 	return s, nil
-}
-
-func (s *Store) addItem(it *Item) {
-	// Assign index based on sheet and order in file
-	// Index is unique per sheet and follows the order items appear in files
-	if _, ok := s.sheetIndex[it.Sheet]; !ok {
-		s.sheetIndex[it.Sheet] = 0
-	}
-	it.Index = s.sheetIndex[it.Sheet]
-	s.sheetIndex[it.Sheet]++
-
-	s.items = append(s.items, it)
-
-	if _, ok := s.bySheet[it.Sheet]; !ok {
-		s.bySheet[it.Sheet] = make([]*Item, 0)
-	}
-	s.bySheet[it.Sheet] = append(s.bySheet[it.Sheet], it)
-
-	// Index the item in Bleve
-	// Create a document ID using sheet, rowId, and index with a special delimiter
-	// Use "|@|" as delimiter which is unlikely to appear in sheet names or rowIds
-	docID := fmt.Sprintf("%s|@|%s|@|%d", it.Sheet, it.RowID, it.Index)
-
-	// Create a searchable document with all language values
-	doc := map[string]interface{}{
-		"sheet": it.Sheet,
-		"rowId": it.RowID,
-		"index": it.Index,
-	}
-
-	// Add all language values to the document
-	// Lowercase values for case-insensitive wildcard matching with keyword analyzer
-	if it.Values != nil {
-		for lang, value := range it.Values {
-			doc[lang] = strings.ToLower(value)
-		}
-	}
-
-	// Index the document
-	if err := s.index.Index(docID, doc); err != nil {
-		log.Printf("warning: failed to index item %s: %v", docID, err)
-	}
 }
 
 // Search finds items whose value in the given language contains the query substring.
 // If sheetFilter is non-empty, only items from that sheet are considered.
 // Uses Bleve full-text search for better performance and relevance.
-// Supports multi-word queries: "悲伤 表情" will match text containing both terms.
-func (s *Store) Search(lang, queryStr, sheetFilter string, offset, limit int) []*Item {
-	lang = strings.ToLower(strings.TrimSpace(lang))
+func (s *Store) Search(lang string, queryStr string, offset, limit int) (*SearchResult, error) {
 	q := strings.TrimSpace(queryStr)
 
 	if q == "" {
-		return []*Item{}
+		return nil, fmt.Errorf("query is empty")
 	}
 
-	// Build Bleve query - use wildcard query for substring matching
-	var bleveQuery query.Query
+	query := bleve.NewMatchQuery(q)
+	query.SetField(lang)
 
-	// Split query by whitespace to support multi-word search
-	// e.g., "悲伤 表情" should match text containing both "悲伤" and "表情"
-	terms := strings.Fields(q)
+	request := bleve.NewSearchRequestOptions(query, limit, offset, false)
+	request.Fields = []string{"*"}
+	request.Highlight = bleve.NewHighlightWithStyle("html")
 
-	if len(terms) == 0 {
-		return []*Item{}
-	}
-
-	// Create wildcard queries for each term
-	var termQueries []query.Query
-	for _, term := range terms {
-		// Wrap each term with wildcards for substring search
-		wildcardStr := "*" + strings.ToLower(term) + "*"
-		wildcardQuery := query.NewWildcardQuery(wildcardStr)
-		wildcardQuery.SetField(lang)
-		termQueries = append(termQueries, wildcardQuery)
-	}
-
-	// If multiple terms, combine them with AND logic (conjunction)
-	var matchQuery query.Query
-	if len(termQueries) == 1 {
-		matchQuery = termQueries[0]
-	} else {
-		matchQuery = query.NewConjunctionQuery(termQueries)
-	}
-
-	if sheetFilter != "" {
-		// If sheet filter is provided, combine with a conjunction query
-		sheetQuery := query.NewMatchQuery(sheetFilter)
-		sheetQuery.SetField("sheet")
-
-		conjQuery := query.NewConjunctionQuery([]query.Query{matchQuery, sheetQuery})
-		bleveQuery = conjQuery
-	} else {
-		bleveQuery = matchQuery
-	}
-
-	// Create search request
-	searchRequest := bleve.NewSearchRequest(bleveQuery)
-	searchRequest.From = offset
-	searchRequest.Size = limit
-	searchRequest.Fields = []string{"sheet", "rowId", "index"}
-
-	// Execute search
-	searchResults, err := s.index.Search(searchRequest)
+	searchResults, err := s.index.Search(request)
 	if err != nil {
 		log.Printf("search error: %v", err)
-		return []*Item{}
+		return nil, fmt.Errorf("search error: %w", err)
 	}
 
-	// Build result set by looking up items from the store
-	results := make([]*Item, 0, len(searchResults.Hits))
+	items := make([]*Item, 0, len(searchResults.Hits))
 	for _, hit := range searchResults.Hits {
-		// Parse the document ID to find the item
-		// Format: sheet|@|rowId|@|index (using |@| as delimiter)
-		parts := strings.Split(hit.ID, "|@|")
-		if len(parts) != 3 {
-			continue
-		}
-
-		sheet := parts[0]
-		rowId := parts[1]
-		indexStr := parts[2]
-
-		idx, err := strconv.Atoi(indexStr)
-		if err != nil {
-			continue
-		}
-
-		// Find the item in our store
-		if sheetItems, ok := s.bySheet[sheet]; ok {
-			for _, item := range sheetItems {
-				if item.RowID == rowId && item.Index == idx {
-					results = append(results, item)
-					break
-				}
-			}
-		}
+		items = append(items, formatItemFromHit(hit))
 	}
 
-	return results
+	return &SearchResult{
+		Items:   items,
+		Total:   searchResults.Total,
+		Elapsed: searchResults.Took,
+	}, nil
 }
 
 // GetBySheet returns items for a given sheet with pagination.
 // Returns early when offset+limit items are found to optimize performance.
-func (s *Store) GetBySheet(sheet string, offset, limit int) []*Item {
-	sheetMap, ok := s.bySheet[sheet]
-	if !ok {
-		return nil
+func (s *Store) GetBySheet(sheet string, offset, limit int) (*SearchResult, error) {
+	from := float64(offset)
+	to := float64(offset + limit)
+
+	indexQuery := bleve.NewNumericRangeQuery(&from, &to)
+	indexQuery.SetField("index")
+
+	sheetQuery := bleve.NewTermQuery(sheet)
+	sheetQuery.SetField("sheet")
+
+	query := bleve.NewConjunctionQuery(
+		indexQuery,
+		sheetQuery,
+	)
+
+	request := bleve.NewSearchRequestOptions(query, limit, 0, false)
+	request.Fields = []string{"*"}
+	request.SortBy([]string{"index"})
+
+	searchResults, err := s.index.Search(request)
+	if err != nil {
+		log.Printf("search error: %v", err)
+		return nil, fmt.Errorf("search error: %w", err)
 	}
 
-	// We need to find (offset + limit) items total, then return the last 'limit' items
-	needed := offset + limit
-	results := make([]*Item, 0, needed)
-
-	for _, item := range sheetMap {
-		results = append(results, item)
-		// Return early if we have enough results
-		if len(results) >= needed {
-			goto done
-		}
+	items := make([]*Item, 0, len(searchResults.Hits))
+	for _, hit := range searchResults.Hits {
+		items = append(items, formatItemFromHit(hit))
 	}
 
-done:
-	// Apply offset and limit
-	if offset >= len(results) {
-		return []*Item{}
-	}
-
-	end := offset + limit
-	if end > len(results) {
-		end = len(results)
-	}
-
-	return results[offset:end]
+	return &SearchResult{
+		Items:   items,
+		Total:   searchResults.Total,
+		Elapsed: searchResults.Took,
+	}, nil
 }
 
 // Close closes the Bleve index and releases resources.

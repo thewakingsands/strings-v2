@@ -9,6 +9,15 @@ import (
 )
 
 func scanDataFiles(dataDir string) ([]string, error) {
+	pattern := filepath.Join(dataDir, "*.json")
+	files, err := filepath.Glob(pattern)
+	if err != nil {
+		return nil, fmt.Errorf("glob %s: %w", pattern, err)
+	}
+	return files, nil
+}
+
+func deepScanDataFiles(dataDir string) ([]string, error) {
 	var files []string
 	err := filepath.Walk(dataDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {

@@ -5,5 +5,5 @@ type Item struct {
 	Sheet  string            `json:"sheet"`
 	RowID  string            `json:"rowId"`
 	Values map[string]string `json:"values"`
-	Index  int               `json:"index"`
+	Index  uint32            `json:"index"`
 }
