@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -91,19 +92,16 @@ func (s *Store) loadFile(path string) error {
 
 // Search finds items whose value in the given language contains the query substring.
 // If sheetFilter is non-empty, only items from that sheet are considered.
-func (s *Store) Search(lang, query, sheetFilter string, limit int) []*Item {
-	if limit <= 0 {
-		limit = 100
-	}
-
+// Returns early when offset+limit items are found to optimize performance.
+func (s *Store) Search(lang, query, sheetFilter string, offset, limit int) []*Item {
 	lang = strings.ToLower(strings.TrimSpace(lang))
 	q := strings.ToLower(query)
 
-	results := make([]*Item, 0, limit)
+	// We need to find (offset + limit) items total, then return the last 'limit' items
+	needed := offset + limit
+	results := make([]*Item, 0, needed)
+
 	for _, it := range s.items {
-		if len(results) >= limit {
-			break
-		}
 		if sheetFilter != "" && it.Sheet != sheetFilter {
 			continue
 		}
@@ -118,21 +116,60 @@ func (s *Store) Search(lang, query, sheetFilter string, limit int) []*Item {
 
 		if strings.Contains(strings.ToLower(value), q) {
 			results = append(results, it)
+			// Return early if we have enough results
+			if len(results) >= needed {
+				break
+			}
 		}
 	}
 
-	return results
+	// Apply offset and limit
+	if offset >= len(results) {
+		return []*Item{}
+	}
+
+	end := offset + limit
+	if end > len(results) {
+		end = len(results)
+	}
+
+	return results[offset:end]
 }
 
-// GetBySheetRow returns all items for a given sheet and rowId.
-// This corresponds to "all items related with pagination" for that row.
-func (s *Store) GetBySheetRow(sheet, rowID string) ([]*Item, bool) {
+// GetBySheet returns items for a given sheet with pagination.
+// Returns early when offset+limit items are found to optimize performance.
+func (s *Store) GetBySheet(sheet string, offset, limit int) []*Item {
 	sheetMap, ok := s.bySheetRow[sheet]
 	if !ok {
-		return nil, false
+		return nil
 	}
-	items, ok := sheetMap[rowID]
-	return items, ok
+
+	// We need to find (offset + limit) items total, then return the last 'limit' items
+	needed := offset + limit
+	results := make([]*Item, 0, needed)
+
+	for _, items := range sheetMap {
+		for _, item := range items {
+			results = append(results, item)
+			// Return early if we have enough results
+			if len(results) >= needed {
+				goto done
+			}
+		}
+	}
+
+done:
+	// Apply offset and limit
+	if offset >= len(results) {
+		return []*Item{}
+	}
+
+	end := offset + limit
+	if end > len(results) {
+		end = len(results)
+	}
+
+	return results[offset:end]
 }
 
 // Server wraps the in-memory store and exposes HTTP handlers.
@@ -164,11 +201,41 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 	})
 }
 
+// parseOffsetLimit parses and formats offset and limit from URL query parameters.
+// Returns offset (default: 0, min: 0) and limit (default: 100, min: 1, max: 1000).
+func parseOffsetLimit(query url.Values) (offset, limit int) {
+	offset = 0
+	if offsetStr := query.Get("offset"); offsetStr != "" {
+		if v, err := strconv.Atoi(offsetStr); err == nil && v >= 0 {
+			offset = v
+		}
+	}
+
+	limit = 100
+	if limitStr := query.Get("limit"); limitStr != "" {
+		if v, err := strconv.Atoi(limitStr); err == nil && v > 0 {
+			limit = v
+		}
+	}
+
+	if limit <= 0 {
+		limit = 100
+	}
+	if limit > 1000 {
+		limit = 1000
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	return offset, limit
+}
+
 // handleSearch implements:
 //  1. Provided language code and an input, search all items that contain input,
 //     return sheet name, rowId, and values from all languages.
 //
-// GET /search?lang=en&q=battle[&sheet=AchievementKind][&limit=100]
+// GET /search?lang=en&q=battle[&sheet=AchievementKind][&offset=0][&limit=100]
 func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	if r.Method != http.MethodGet {
@@ -190,24 +257,15 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	limit := 100
-	if limitStr := query.Get("limit"); limitStr != "" {
-		if v, err := strconv.Atoi(limitStr); err == nil && v > 0 {
-			if v > 1000 {
-				v = 1000
-			}
-			limit = v
-		}
-	}
-
-	results := s.store.Search(lang, q, sheet, limit)
+	offset, limit := parseOffsetLimit(query)
+	results := s.store.Search(lang, q, sheet, offset, limit)
 	writeJSONWithMeta(w, http.StatusOK, results, time.Since(start))
 }
 
 // handleItems implements:
-// 2. Provided sheet and rowId, return all items related with pagination.
+// 2. Provided sheet, return all items related with pagination.
 //
-// GET /items?sheet=AchievementKind&rowId=1
+// GET /items?sheet=AchievementKind[&offset=0][&limit=100]
 func (s *Server) handleItems(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	if r.Method != http.MethodGet {
@@ -217,20 +275,16 @@ func (s *Server) handleItems(w http.ResponseWriter, r *http.Request) {
 
 	query := r.URL.Query()
 	sheet := strings.TrimSpace(query.Get("sheet"))
-	rowID := strings.TrimSpace(query.Get("rowId"))
 
 	if sheet == "" {
 		writeError(w, http.StatusBadRequest, "missing sheet query parameter")
 		return
 	}
-	if rowID == "" {
-		writeError(w, http.StatusBadRequest, "missing rowId query parameter")
-		return
-	}
 
-	items, ok := s.store.GetBySheetRow(sheet, rowID)
-	if !ok || len(items) == 0 {
-		writeError(w, http.StatusNotFound, "no items found for given sheet and rowId")
+	offset, limit := parseOffsetLimit(query)
+	items := s.store.GetBySheet(sheet, offset, limit)
+	if len(items) == 0 {
+		writeError(w, http.StatusNotFound, "no items found for given sheet")
 		return
 	}
 
