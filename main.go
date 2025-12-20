@@ -13,11 +13,10 @@ import (
 	"time"
 )
 
-// Item represents one string entry exported from ixion (per sheet/row/field).
+// Item represents one string entry exported from ixion (per sheet/row).
 type Item struct {
 	Sheet  string            `json:"sheet"`
 	RowID  string            `json:"rowId"`
-	Field  string            `json:"field"`
 	Values map[string]string `json:"values"`
 }
 
@@ -157,7 +156,7 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 
 // handleSearch implements:
 //  1. Provided language code and an input, search all items that contain input,
-//     return sheet name, rowId, field, and values from all languages.
+//     return sheet name, rowId, and values from all languages.
 //
 // GET /search?lang=en&q=battle[&sheet=AchievementKind][&limit=100]
 func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
