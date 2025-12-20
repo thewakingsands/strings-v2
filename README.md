@@ -31,7 +31,6 @@ Each JSON file in `data/` should contain an array of items:
 {
   "sheet": "AchievementKind",
   "rowId": "1",
-  "field": "Name",
   "values": {
     "en": "Battle",
     "ja": "バトル",
@@ -44,20 +43,23 @@ Each JSON file in `data/` should contain an array of items:
 
 - **Search strings**
 
-  - **Endpoint**: `GET /search`
+  - **Endpoint**: `GET /api/search`
   - **Query parameters**:
     - `lang` (required): language code, e.g. `en`, `ja`, `chs`
     - `q` (required): substring to search for in the given language
     - `sheet` (optional): restrict search to a specific sheet name
-    - `limit` (optional): maximum number of results (default 100, max 1000)
-  - **Response**: JSON array of matching items, each containing `sheet`, `rowId`, `field`, and `values` (all languages).
+    - `offset` (optional): offset of the first item to return (default 0)
+    - `limit` (optional): maximum number of items to return (default 100, max 1000)
+  - **Response**: JSON array of matching items, each containing `sheet`, `rowId`, and `values` (all languages).
 
 - **Get items for a row**
 
-  - **Endpoint**: `GET /items`
+  - **Endpoint**: `GET /api/items`
   - **Query parameters**:
     - `sheet` (required): sheet name
     - `rowId` (required): row id (e.g. `"1"` or `"1.0"`)
+    - `offset` (optional): offset of the first item to return (default 0)
+    - `limit` (optional): maximum number of items to return (default 100, max 1000)
   - **Response**: JSON array of all items for the given sheet and rowId.
 
 
