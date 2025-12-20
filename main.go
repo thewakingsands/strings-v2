@@ -148,6 +148,16 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	_ = enc.Encode(v)
 }
 
+func writeJSONWithMeta(w http.ResponseWriter, status int, data any, elapsed time.Duration) {
+	response := map[string]any{
+		"data": data,
+		"meta": map[string]any{
+			"elapsed": elapsed.String(),
+		},
+	}
+	writeJSON(w, status, response)
+}
+
 func writeError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{
 		"error": msg,
@@ -160,6 +170,7 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 //
 // GET /search?lang=en&q=battle[&sheet=AchievementKind][&limit=100]
 func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
 	if r.Method != http.MethodGet {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
@@ -190,7 +201,7 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	}
 
 	results := s.store.Search(lang, q, sheet, limit)
-	writeJSON(w, http.StatusOK, results)
+	writeJSONWithMeta(w, http.StatusOK, results, time.Since(start))
 }
 
 // handleItems implements:
@@ -198,6 +209,7 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 //
 // GET /items?sheet=AchievementKind&rowId=1
 func (s *Server) handleItems(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
 	if r.Method != http.MethodGet {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
@@ -222,7 +234,7 @@ func (s *Server) handleItems(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, items)
+	writeJSONWithMeta(w, http.StatusOK, items, time.Since(start))
 }
 
 func main() {
