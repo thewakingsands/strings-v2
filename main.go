@@ -10,7 +10,7 @@ import (
 )
 
 func main() {
-	addr := flag.String("addr", ":8080", "listen address (e.g. :8080)")
+	addr := flag.String("addr", "127.0.0.1:8080", "listen address (e.g. :8080)")
 	dataDir := flag.String("data", "data", "directory containing JSON data files")
 	uiDir := flag.String("ui", "ui/dist", "directory containing UI static files")
 	flag.Parse()
