@@ -24,10 +24,8 @@ func LoadStore(dataDir string) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("scan data files: %w", err)
 	}
-	if len(files) == 0 {
-		log.Printf("no data files found in %s", dataDir)
-	}
 
+	log.Printf("loading %d files", len(files))
 	for _, path := range files {
 		items, err := loadFile(path)
 		if err != nil {
