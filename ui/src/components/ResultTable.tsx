@@ -2,7 +2,7 @@ import { Classes, Colors, HTMLTable } from '@blueprintjs/core'
 import styled from '@emotion/styled'
 import type { StringItem } from '@/search/interface'
 import { highlightText } from '@/utils/highlight'
-import { defaultDisplayLanguages, languageMap } from '@/utils/language'
+import { languageMap } from '@/utils/language'
 import { useScrollIntoView } from '../utils/useScrollIntoView'
 
 const HighlightedTbody = styled.tbody({
@@ -60,16 +60,12 @@ export interface IResultTableProps {
   onContextButtonClick?: (item: StringItem) => void
   keyword: string
   highlightItem?: Pick<StringItem, 'sheet' | 'rowId'>
+  displayLanguages: string[]
 }
 
 export function ResultTable(props: IResultTableProps) {
-  const { items, keyword } = props
+  const { items, keyword, displayLanguages } = props
   useScrollIntoView('.highlight-row', [props.highlightItem])
-
-  const displayLanguages = defaultDisplayLanguages.map((lang) => ({
-    label: languageMap[lang],
-    value: lang,
-  }))
 
   return (
     <ScrollableContainer>
@@ -87,7 +83,9 @@ export function ResultTable(props: IResultTableProps) {
           <tr>
             <th>位置</th>
             {displayLanguages.map((lang) => (
-              <th key={lang.value}>{lang.label}</th>
+              <th key={lang}>
+                {languageMap[lang as keyof typeof languageMap]}
+              </th>
             ))}
           </tr>
         </thead>
@@ -110,9 +108,9 @@ export function ResultTable(props: IResultTableProps) {
                 </LinkButton>
               </td>
               {displayLanguages.map((lang) => {
-                const value = item.values[lang.value]
+                const value = item.values[lang]
                 return (
-                  <td key={lang.value}>
+                  <td key={lang}>
                     {value ? highlightText(value, keyword) : ''}
                   </td>
                 )

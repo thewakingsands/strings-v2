@@ -19,6 +19,7 @@ export async function searchApi(
     sheet?: string
     offset?: number
     limit?: number
+    fields?: string[]
   },
   signal?: AbortSignal,
 ): Promise<ApiResponse<StringItem[]>> {
@@ -33,6 +34,9 @@ export async function searchApi(
   }
   if (params.limit !== undefined) {
     searchParams.set('limit', params.limit.toString())
+  }
+  if (params.fields && params.fields.length > 0) {
+    searchParams.append('fields', params.fields.join(','))
   }
 
   const resp = await fetch(`/api/search?${searchParams.toString()}`, {
@@ -53,6 +57,7 @@ export async function itemsApi(
     sheet: string
     offset?: number
     limit?: number
+    fields?: string[]
   },
   signal?: AbortSignal,
 ): Promise<ApiResponse<StringItem[]>> {
@@ -63,6 +68,9 @@ export async function itemsApi(
   }
   if (params.limit !== undefined) {
     searchParams.set('limit', params.limit.toString())
+  }
+  if (params.fields && params.fields.length > 0) {
+    searchParams.append('fields', params.fields.join(','))
   }
 
   const resp = await fetch(`/api/items?${searchParams.toString()}`, {

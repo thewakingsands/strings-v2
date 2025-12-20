@@ -75,7 +75,7 @@ func indexItems(i bleve.Index, items []*Item) error {
 	batch := i.NewBatch()
 
 	for _, item := range items {
-		docId := fmt.Sprintf("%s@%d", item.Sheet, item.RowID)
+		docId := fmt.Sprintf("%s@%s", item.Sheet, item.RowID)
 		if err := batch.Index(docId, formatItemDocument(item)); err != nil {
 			return err
 		}

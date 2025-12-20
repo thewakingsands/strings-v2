@@ -1,8 +1,12 @@
 package server
 
 import (
+	"fmt"
 	"net/url"
+	"slices"
 	"strconv"
+	"strings"
+	"xivstrings/pkg/constant"
 )
 
 // parseOffsetLimit parses and formats offset and limit from URL query parameters.
@@ -33,4 +37,19 @@ func parseOffsetLimit(query url.Values) (offset, limit int) {
 	}
 
 	return offset, limit
+}
+
+func parseFields(query url.Values) ([]string, error) {
+	fields := query.Get("fields")
+	if fields == "" {
+		return constant.DefaultDisplayLanguages, nil
+	}
+
+	parsedFields := strings.Split(fields, ",")
+	for _, field := range parsedFields {
+		if !slices.Contains(constant.Languages, field) {
+			return nil, fmt.Errorf("invalid field: %s", field)
+		}
+	}
+	return parsedFields, nil
 }

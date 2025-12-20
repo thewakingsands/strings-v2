@@ -5,6 +5,7 @@ export interface IFileLineProps {
   sheet: string
   indexLower: number
   indexHigher: number
+  displayLanguages?: string[]
 }
 
 export async function linesByFile(
@@ -20,6 +21,7 @@ export async function linesByFile(
       sheet,
       offset,
       limit,
+      fields: props.displayLanguages,
     },
     signal,
   )

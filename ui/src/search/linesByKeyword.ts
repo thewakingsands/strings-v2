@@ -6,10 +6,11 @@ export interface IKeywordProps {
   pageSize: number
   page: number
   language: string
+  displayLanguages?: string[]
 }
 
 export async function linesByKeyword(
-  { keyword, pageSize, page, language }: IKeywordProps,
+  { keyword, pageSize, page, language, displayLanguages }: IKeywordProps,
   signal?: AbortSignal,
 ): Promise<SearchResult> {
   if (!keyword) {
@@ -23,6 +24,7 @@ export async function linesByKeyword(
       q: keyword,
       offset: (page - 1) * pageSize,
       limit: pageSize,
+      fields: displayLanguages,
     },
     signal,
   )

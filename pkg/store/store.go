@@ -80,10 +80,12 @@ func LoadStore(dataDir string) (*Store, error) {
 	return s, nil
 }
 
+var metaFields = []string{"sheet", "id", "index"}
+
 // Search finds items whose value in the given language contains the query substring.
 // If sheetFilter is non-empty, only items from that sheet are considered.
 // Uses Bleve full-text search for better performance and relevance.
-func (s *Store) Search(lang string, queryStr string, offset, limit int) (*SearchResult, error) {
+func (s *Store) Search(lang string, queryStr string, offset, limit int, fields []string) (*SearchResult, error) {
 	q := strings.TrimSpace(queryStr)
 
 	if q == "" {
@@ -93,8 +95,12 @@ func (s *Store) Search(lang string, queryStr string, offset, limit int) (*Search
 	query := bleve.NewMatchQuery(q)
 	query.SetField(lang)
 
+	searchFields := make([]string, 0, len(fields)+len(metaFields))
+	searchFields = append(searchFields, metaFields...)
+	searchFields = append(searchFields, fields...)
+
 	request := bleve.NewSearchRequestOptions(query, limit, offset, false)
-	request.Fields = []string{"*"}
+	request.Fields = searchFields
 	request.Highlight = bleve.NewHighlightWithStyle("html")
 
 	searchResults, err := s.index.Search(request)
@@ -117,7 +123,7 @@ func (s *Store) Search(lang string, queryStr string, offset, limit int) (*Search
 
 // GetBySheet returns items for a given sheet with pagination.
 // Returns early when offset+limit items are found to optimize performance.
-func (s *Store) GetBySheet(sheet string, offset, limit int) (*SearchResult, error) {
+func (s *Store) GetBySheet(sheet string, offset, limit int, fields []string) (*SearchResult, error) {
 	from := float64(offset)
 	to := float64(offset + limit)
 
@@ -132,8 +138,12 @@ func (s *Store) GetBySheet(sheet string, offset, limit int) (*SearchResult, erro
 		sheetQuery,
 	)
 
+	searchFields := make([]string, 0, len(fields)+len(metaFields))
+	searchFields = append(searchFields, metaFields...)
+	searchFields = append(searchFields, fields...)
+
 	request := bleve.NewSearchRequestOptions(query, limit, 0, false)
-	request.Fields = []string{"*"}
+	request.Fields = searchFields
 	request.SortBy([]string{"index"})
 
 	searchResults, err := s.index.Search(request)

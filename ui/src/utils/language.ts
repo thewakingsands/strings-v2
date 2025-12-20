@@ -8,5 +8,17 @@ export const languageMap = {
   fr: 'Français',
 }
 
+export interface LanguageOption {
+  value: string
+  label: string
+}
+
+export const languageOptions: LanguageOption[] = Object.entries(
+  languageMap,
+).map(([value, label]) => ({
+  value,
+  label,
+}))
+
 export const defaultLanguage = 'chs'
 export const defaultDisplayLanguages = ['chs', 'tc', 'en', 'ja'] as const

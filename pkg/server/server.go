@@ -39,7 +39,13 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	}
 
 	offset, limit := parseOffsetLimit(query)
-	results, err := s.store.Search(lang, q, offset, limit)
+	fields, err := parseFields(query)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	results, err := s.store.Search(lang, q, offset, limit, fields)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -75,7 +81,13 @@ func (s *Server) handleItems(w http.ResponseWriter, r *http.Request) {
 	}
 
 	offset, limit := parseOffsetLimit(query)
-	results, err := s.store.GetBySheet(sheet, offset, limit)
+	fields, err := parseFields(query)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	results, err := s.store.GetBySheet(sheet, offset, limit, fields)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -134,4 +146,31 @@ func CreateMux(config ServerConfig) *http.ServeMux {
 	}))
 
 	return mux
+}
+
+// filterItemsByFields filters the values map of each item to only include the specified field languages.
+func filterItemsByFields(items []*store.Item, fields []string) []*store.Item {
+	// Create a set of valid fields for quick lookup
+	fieldSet := make(map[string]bool)
+	for _, field := range fields {
+		fieldSet[strings.TrimSpace(field)] = true
+	}
+
+	filtered := make([]*store.Item, len(items))
+	for i, item := range items {
+		filteredItem := &store.Item{
+			Sheet:  item.Sheet,
+			RowID:  item.RowID,
+			Index:  item.Index,
+			Values: make(map[string]string),
+		}
+		// Only include the specified field languages in values
+		for field := range fieldSet {
+			if val, ok := item.Values[field]; ok {
+				filteredItem.Values[field] = val
+			}
+		}
+		filtered[i] = filteredItem
+	}
+	return filtered
 }

@@ -11,7 +11,7 @@ import { SearchResult } from './components/SearchResult'
 import { TopNav } from './components/TopNav'
 import type { StringItem } from './search/interface'
 import { type ISearchQuery, useSearch } from './search/useSearch'
-import { defaultLanguage } from './utils/language'
+import { defaultDisplayLanguages, defaultLanguage } from './utils/language'
 
 const MarginedDiv = styled.div({
   marginBottom: 12,
@@ -34,6 +34,9 @@ const StickyContainer = styled.div({
 export default function App() {
   const [keywordInput, setKeywordInput] = useState('')
   const [language, setLanguage] = useState(defaultLanguage)
+  const [displayLanguages, setDisplayLanguages] = useState<string[]>([
+    ...defaultDisplayLanguages,
+  ])
   const [highlightItem, setHighlightItem] = useState<StringItem | null>(null)
   const [previousQuery, setPreviousQuery] = useState<ISearchQuery | null>(null)
 
@@ -55,6 +58,7 @@ export default function App() {
         page: 1,
         pageSize: PAGE_SIZE,
         language,
+        displayLanguages,
       },
     }
     debouncedSetSearch(query as ISearchQuery)
@@ -70,9 +74,36 @@ export default function App() {
           page: 1,
           pageSize: PAGE_SIZE,
           language: newLanguage,
+          displayLanguages,
         },
       }
       search.setSearch(query)
+    }
+  }
+
+  const handleDisplayLanguagesChange = (newDisplayLanguages: string[]) => {
+    setDisplayLanguages(newDisplayLanguages)
+    // Trigger new search if there's a keyword
+    if (keywordInput) {
+      const query: ISearchQuery = {
+        keyword: {
+          keyword: keywordInput,
+          page: 1,
+          pageSize: PAGE_SIZE,
+          language,
+          displayLanguages: newDisplayLanguages,
+        },
+      }
+      search.setSearch(query)
+    }
+    // Also update file view if active
+    if (search.query?.file) {
+      search.setSearch({
+        file: {
+          ...search.query.file,
+          displayLanguages: newDisplayLanguages,
+        },
+      })
     }
   }
 
@@ -90,6 +121,7 @@ export default function App() {
         sheet: item.sheet,
         indexLower: Math.max(0, index - 20),
         indexHigher: index + 20,
+        displayLanguages,
       },
     })
   }
@@ -101,6 +133,9 @@ export default function App() {
       setKeywordInput(previousQuery.keyword?.keyword || '')
       if (previousQuery.keyword?.language) {
         setLanguage(previousQuery.keyword.language)
+      }
+      if (previousQuery.keyword?.displayLanguages) {
+        setDisplayLanguages(previousQuery.keyword.displayLanguages)
       }
     }
   }
@@ -133,6 +168,8 @@ export default function App() {
                 onBackClicked={handleBackClick}
                 language={language}
                 onLanguageChange={handleLanguageChange}
+                displayLanguages={displayLanguages}
+                onDisplayLanguagesChange={handleDisplayLanguagesChange}
               />
             </MarginedDiv>
           </StickyContainer>
@@ -144,6 +181,7 @@ export default function App() {
               <SearchError error={search.error} />
             ) : search.result ? (
               <SearchResult
+                displayLanguages={displayLanguages}
                 keyword={search.query?.keyword?.keyword || ''}
                 items={search.result.items}
                 onContextButtonClick={handleContextClick}

@@ -1,6 +1,7 @@
-import { Button, HTMLSelect } from '@blueprintjs/core'
+import { Button, Popover } from '@blueprintjs/core'
+import { MultiSelect, Select } from '@blueprintjs/select'
 import styled from '@emotion/styled'
-import { languageMap } from '@/utils/language'
+import { type LanguageOption, languageOptions } from '@/utils/language'
 import type { ISearchQuery } from '../search/useSearch'
 import { type ISearchFieldProps, SearchField } from './SearchField'
 
@@ -16,8 +17,12 @@ const SearchContainer = styled.div({
   flex: 1,
 })
 
-const LanguageSelect = styled(HTMLSelect)({
+const SelectContainer = styled.div({
   minWidth: '100px',
+})
+
+const MultiSelectContainer = styled.div({
+  minWidth: '150px',
 })
 
 export interface ISearchBarProps extends ISearchFieldProps {
@@ -25,12 +30,112 @@ export interface ISearchBarProps extends ISearchFieldProps {
   onBackClicked?: () => void
   language: string
   onLanguageChange: (language: string) => void
+  displayLanguages: string[]
+  onDisplayLanguagesChange: (displayLanguages: string[]) => void
 }
 
-const LANGUAGE_OPTIONS = Object.entries(languageMap).map(([value, label]) => ({
+const renderLanguageItem = (
+  item: LanguageOption,
+  {
+    handleClick,
+    modifiers,
+  }: {
+    handleClick: React.MouseEventHandler<HTMLElement>
+    modifiers: { active: boolean }
+  },
+) => (
+  <div
+    key={item.value}
+    onClick={handleClick}
+    style={{
+      padding: '8px',
+      cursor: 'pointer',
+      backgroundColor: modifiers.active ? '#e5e5e5' : 'transparent',
+    }}
+  >
+    {item.label}
+  </div>
+)
+
+const filterLanguage = (query: string, item: LanguageOption): boolean => {
+  const normalizedQuery = query.toLowerCase()
+  return (
+    item.label.toLowerCase().includes(normalizedQuery) ||
+    item.value.toLowerCase().includes(normalizedQuery)
+  )
+}
+
+function DisplayLanguagesSelect({
   value,
-  label,
-}))
+  onChange,
+}: {
+  value: string[]
+  onChange: (value: string[]) => void
+}) {
+  const content = (
+    <div style={{ padding: 16 }}>
+      <MultiSelectContainer style={{ width: '400px' }}>
+        <MultiSelect<LanguageOption>
+          items={languageOptions}
+          selectedItems={languageOptions.filter((opt) =>
+            value.includes(opt.value),
+          )}
+          itemRenderer={renderLanguageItem}
+          itemPredicate={filterLanguage}
+          onItemSelect={(item: LanguageOption) => {
+            if (!value.includes(item.value)) {
+              const newSelection = languageOptions
+                .map((opt) => opt.value)
+                .filter((lang) => value.includes(lang) || lang === item.value)
+              onChange(newSelection)
+            }
+          }}
+          tagRenderer={(item: LanguageOption) => item.label}
+          onRemove={(item: LanguageOption) => {
+            onChange(value.filter((lang) => lang !== item.value))
+          }}
+          popoverProps={{ placement: 'bottom-start' }}
+          placeholder="选择显示语言"
+        />
+      </MultiSelectContainer>
+    </div>
+  )
+  return (
+    <Popover content={content} enforceFocus={false} placement="bottom-start">
+      <Button size="large" tabIndex={0} text={`显示语言 (${value.length}) `} />
+    </Popover>
+  )
+}
+
+function QueryLanguageSelect({
+  value,
+  onChange,
+}: {
+  value: string
+  onChange: (value: string) => void
+}) {
+  return (
+    <SelectContainer>
+      <Select<LanguageOption>
+        items={languageOptions}
+        itemRenderer={renderLanguageItem}
+        itemPredicate={filterLanguage}
+        onItemSelect={(item: LanguageOption) => onChange(item.value)}
+        filterable={false}
+        popoverProps={{ placement: 'bottom-start' }}
+      >
+        <Button
+          size="large"
+          text={
+            languageOptions.find((opt) => opt.value === value)?.label ||
+            '选择查询语言'
+          }
+          endIcon="caret-down"
+        />
+      </Select>
+    </SelectContainer>
+  )
+}
 
 export function SearchBar(props: ISearchBarProps) {
   const kw = props.previousQuery?.keyword?.keyword
@@ -48,15 +153,17 @@ export function SearchBar(props: ISearchBarProps) {
         />
       )}
       <SearchContainer>
-        <LanguageSelect
+        <QueryLanguageSelect
           value={props.language}
-          onChange={(e) => props.onLanguageChange(e.target.value)}
-          options={LANGUAGE_OPTIONS}
-          large
+          onChange={props.onLanguageChange}
         />
         <div style={{ flex: 1 }}>
           <SearchField {...props} />
         </div>
+        <DisplayLanguagesSelect
+          value={props.displayLanguages}
+          onChange={props.onDisplayLanguagesChange}
+        />
       </SearchContainer>
     </Container>
   )

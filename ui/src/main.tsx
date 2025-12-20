@@ -1,3 +1,4 @@
+import { BlueprintProvider } from '@blueprintjs/core'
 import { createRoot } from 'react-dom/client'
 
 import 'normalize.css/normalize.css'
@@ -9,4 +10,8 @@ import { FocusStyleManager } from '@blueprintjs/core'
 import App from './App'
 
 FocusStyleManager.onlyShowFocusOnTabs()
-createRoot(document.getElementById('root')!).render(<App />)
+createRoot(document.getElementById('root')!).render(
+  <BlueprintProvider>
+    <App />
+  </BlueprintProvider>,
+)
