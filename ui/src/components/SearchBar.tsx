@@ -72,38 +72,40 @@ function DisplayLanguagesSelect({
   value: string[]
   onChange: (value: string[]) => void
 }) {
-  const content = (
-    <div style={{ padding: 16 }}>
-      <MultiSelectContainer style={{ width: '400px' }}>
-        <MultiSelect<LanguageOption>
-          items={languageOptions}
-          selectedItems={languageOptions.filter((opt) =>
-            value.includes(opt.value),
-          )}
-          itemRenderer={renderLanguageItem}
-          itemPredicate={filterLanguage}
-          onItemSelect={(item: LanguageOption) => {
-            if (!value.includes(item.value)) {
-              const newSelection = languageOptions
-                .map((opt) => opt.value)
-                .filter((lang) => value.includes(lang) || lang === item.value)
-              onChange(newSelection)
-            }
-          }}
-          tagRenderer={(item: LanguageOption) => item.label}
-          onRemove={(item: LanguageOption) => {
-            onChange(value.filter((lang) => lang !== item.value))
-          }}
-          popoverProps={{ placement: 'bottom-start' }}
-          placeholder="选择显示语言"
-        />
-      </MultiSelectContainer>
-    </div>
-  )
   return (
-    <Popover content={content} enforceFocus={false} placement="bottom-start">
-      <Button size="large" tabIndex={0} text={`显示语言 (${value.length}) `} />
-    </Popover>
+    <MultiSelectContainer>
+      <MultiSelect<LanguageOption>
+        customTarget={(items) => (
+          <Button
+            size="large"
+            tabIndex={0}
+            text={`显示语言 (${items.length})`}
+            style={{ width: '100%' }}
+            endIcon="caret-down"
+          />
+        )}
+        items={languageOptions}
+        selectedItems={languageOptions.filter((opt) =>
+          value.includes(opt.value),
+        )}
+        itemRenderer={renderLanguageItem}
+        itemPredicate={filterLanguage}
+        onItemSelect={(item: LanguageOption) => {
+          if (!value.includes(item.value)) {
+            const newSelection = languageOptions
+              .map((opt) => opt.value)
+              .filter((lang) => value.includes(lang) || lang === item.value)
+            onChange(newSelection)
+          }
+        }}
+        tagRenderer={(item: LanguageOption) => item.label}
+        onRemove={(item: LanguageOption) => {
+          onChange(value.filter((lang) => lang !== item.value))
+        }}
+        popoverProps={{ placement: 'bottom-end' }}
+        placeholder="选择显示语言"
+      />
+    </MultiSelectContainer>
   )
 }
 
