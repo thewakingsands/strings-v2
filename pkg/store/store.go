@@ -3,7 +3,6 @@ package store
 import (
 	"fmt"
 	"log"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -22,8 +21,7 @@ type SearchResult struct {
 }
 
 // LoadStore loads all JSON files from dataDir into memory.
-func LoadStore(dataDir string) (*Store, error) {
-	indexDir := filepath.Join(dataDir, "index")
+func LoadStore(dataDir string, indexDir string) (*Store, error) {
 	idx, err := bleve.Open(indexDir)
 	if err == bleve.ErrorIndexPathDoesNotExist {
 		log.Printf("Creating new index...")
@@ -43,7 +41,8 @@ func LoadStore(dataDir string) (*Store, error) {
 
 		count := 0
 		sheetIndex := make(map[string]uint32)
-		for _, path := range files {
+		for i, path := range files {
+			log.Printf("[%d/%d] loading file %s", i+1, len(files), path)
 			items, err := loadFile(path)
 			if err != nil {
 				return nil, fmt.Errorf("load file %s: %w", path, err)

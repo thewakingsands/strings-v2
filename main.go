@@ -12,10 +12,11 @@ import (
 func main() {
 	addr := flag.String("addr", "127.0.0.1:8080", "listen address (e.g. :8080)")
 	dataDir := flag.String("data", "data", "directory containing JSON data files")
+	indexDir := flag.String("index", "index", "directory containing index files")
 	uiDir := flag.String("ui", "ui/dist", "directory containing UI static files")
 	flag.Parse()
 
-	store, err := store.LoadStore(*dataDir)
+	store, err := store.LoadStore(*dataDir, *indexDir)
 	if err != nil {
 		log.Fatalf("failed to load data: %v", err)
 	}
