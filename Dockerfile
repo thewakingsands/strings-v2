@@ -20,15 +20,14 @@ FROM golang:1.24.11-trixie AS go-builder
 
 WORKDIR /app
 
-# Copy go mod files
-COPY go.mod ./
-COPY go.sum* ./
+# Copy go mod files first
+COPY go.mod go.sum ./
 
 # Download dependencies
 RUN go mod download
 
-# Copy source code
 COPY main.go ./
+COPY pkg/ ./pkg/
 
 # Build Go binary
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o xivstrings .
