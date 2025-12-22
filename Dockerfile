@@ -16,7 +16,7 @@ COPY ui/ ./
 RUN npm run build
 
 # Stage 2: Build Go binary
-FROM golang:1.22-alpine AS go-builder
+FROM golang:1.24.11-trixie AS go-builder
 
 WORKDIR /app
 
@@ -37,7 +37,7 @@ COPY main.go ./
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o xivstrings .
 
 # Stage 3: Final image
-FROM alpine:latest
+FROM gcr.io/distroless/static-debian13
 
 WORKDIR /app
 
