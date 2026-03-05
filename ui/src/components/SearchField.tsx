@@ -12,7 +12,7 @@ export function SearchField(props: ISearchFieldProps) {
   return (
     <InputGroup
       className={props.className}
-      large
+      size="large"
       value={props.keyword}
       onChange={(e) => props.onKeywordChange(e.target.value)}
       leftIcon="search"
@@ -22,7 +22,7 @@ export function SearchField(props: ISearchFieldProps) {
         props.keyword ? (
           <Button
             icon="small-cross"
-            minimal
+            variant="minimal"
             onClick={() => props.onKeywordChange('')}
           />
         ) : undefined
