@@ -5,13 +5,19 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"xivstrings/pkg/store"
+	"xivstrings/pkg/version"
 )
 
 // Server wraps the in-memory store and exposes HTTP handlers.
+// Store can be replaced when data is updated via POST /api/version with token.
 type Server struct {
-	store *store.Store
+	mu          sync.RWMutex
+	store       *store.Store
+	baseDir     string
+	updateToken string // from XIVSTRINGS_UPDATE_TOKEN; empty means update not allowed
 }
 
 // handleSearch implements:
@@ -45,7 +51,14 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	results, err := s.store.Search(lang, q, offset, limit, fields)
+	s.mu.RLock()
+	st := s.store
+	s.mu.RUnlock()
+	if st == nil {
+		writeError(w, http.StatusServiceUnavailable, "store not loaded")
+		return
+	}
+	results, err := st.Search(lang, q, offset, limit, fields)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -87,7 +100,14 @@ func (s *Server) handleItems(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	results, err := s.store.GetBySheet(sheet, offset, limit, fields)
+	s.mu.RLock()
+	st := s.store
+	s.mu.RUnlock()
+	if st == nil {
+		writeError(w, http.StatusServiceUnavailable, "store not loaded")
+		return
+	}
+	results, err := st.GetBySheet(sheet, offset, limit, fields)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -104,19 +124,88 @@ func (s *Server) handleItems(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, response)
 }
 
+// handleVersion: GET returns current data version; POST triggers update (requires token).
+// GET /api/version -> { "version": "publish-20260303-8b409c8" }
+// POST /api/version?token=... -> { "version": "...", "updated": true|false }
+// Token is set via environment variable XIVSTRINGS_UPDATE_TOKEN. If not set, POST returns 403.
+func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		v, err := version.GetLocalVersion(s.baseDir)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"version": v})
+		return
+	case http.MethodPost:
+		if s.updateToken == "" {
+			writeError(w, http.StatusForbidden, "update not allowed: XIVSTRINGS_UPDATE_TOKEN is not set")
+			return
+		}
+		token := strings.TrimSpace(r.URL.Query().Get("token"))
+		if token == "" {
+			writeError(w, http.StatusBadRequest, "missing token parameter")
+			return
+		}
+		if token != s.updateToken {
+			writeError(w, http.StatusUnauthorized, "invalid token")
+			return
+		}
+		result, err := version.EnsureVersion(s.baseDir)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if result.Updated {
+			newStore, err := store.LoadStore(result.StringDir, result.IndexDir)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, "reload store after update: "+err.Error())
+				return
+			}
+			s.SetStore(newStore)
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"version": result.Version,
+			"updated": result.Updated,
+		})
+		return
+	default:
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+	}
+}
+
 type ServerConfig struct {
-	Store *store.Store
-	UiDir string
+	Store       *store.Store
+	UiDir       string
+	BaseDir     string // root dir for data/, index/, version file
+	UpdateToken string // from XIVSTRINGS_UPDATE_TOKEN; required for POST /api/version
+}
+
+// SetStore replaces the current store (closes the old one). Caller must not use the old store after this.
+func (s *Server) SetStore(newStore *store.Store) {
+	s.mu.Lock()
+	old := s.store
+	s.store = newStore
+	s.mu.Unlock()
+	if old != nil {
+		_ = old.Close()
+	}
 }
 
 func CreateMux(config ServerConfig) *http.ServeMux {
-	server := &Server{store: config.Store}
+	server := &Server{
+		store:       config.Store,
+		baseDir:     config.BaseDir,
+		updateToken: config.UpdateToken,
+	}
 
 	mux := http.NewServeMux()
 
 	// API routes
 	mux.HandleFunc("/api/search", server.handleSearch)
 	mux.HandleFunc("/api/items", server.handleItems)
+	mux.HandleFunc("/api/version", server.handleVersion)
 
 	// Serve static files from UI directory
 	// For SPA routing: serve index.html for non-API routes that don't match files

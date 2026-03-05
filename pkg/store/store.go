@@ -24,50 +24,10 @@ type SearchResult struct {
 func LoadStore(dataDir string, indexDir string) (*Store, error) {
 	idx, err := bleve.Open(indexDir)
 	if err == bleve.ErrorIndexPathDoesNotExist {
-		log.Printf("Creating new index...")
-
-		mapping := buildItemIndex()
-		idx, err = bleve.New(indexDir, mapping)
+		idx, err = buildItemIndex(dataDir, indexDir)
 		if err != nil {
-			return nil, fmt.Errorf("create bleve index: %w", err)
+			return nil, fmt.Errorf("build item index: %w", err)
 		}
-
-		files, err := scanDataFiles(dataDir)
-		if err != nil {
-			return nil, fmt.Errorf("scan data files: %w", err)
-		}
-
-		log.Printf("loading %d files", len(files))
-
-		count := 0
-		sheetIndex := make(map[string]uint32)
-		for i, path := range files {
-			log.Printf("[%d/%d] loading file %s", i+1, len(files), path)
-			items, err := loadFile(path)
-			if err != nil {
-				return nil, fmt.Errorf("load file %s: %w", path, err)
-			}
-
-			for _, it := range items {
-				// Assign index based on sheet and order in file
-				// Index is unique per sheet and follows the order items appear in files
-				if _, ok := sheetIndex[it.Sheet]; !ok {
-					sheetIndex[it.Sheet] = 0
-				}
-				it.Index = sheetIndex[it.Sheet]
-				sheetIndex[it.Sheet]++
-			}
-
-			// Index the item in Bleve
-			err = indexItems(idx, items)
-			if err != nil {
-				return nil, fmt.Errorf("index items: %w", err)
-			}
-
-			count += len(items)
-		}
-
-		log.Printf("loaded %d items from %d files", count, len(files))
 	} else if err != nil {
 		return nil, fmt.Errorf("create bleve index: %w", err)
 	}
@@ -85,6 +45,10 @@ var metaFields = []string{"sheet", "id", "index"}
 // If sheetFilter is non-empty, only items from that sheet are considered.
 // Uses Bleve full-text search for better performance and relevance.
 func (s *Store) Search(lang string, queryStr string, offset, limit int, fields []string) (*SearchResult, error) {
+	if s.index == nil {
+		return nil, fmt.Errorf("index is not loaded")
+	}
+
 	q := strings.TrimSpace(queryStr)
 
 	if q == "" {
@@ -123,6 +87,10 @@ func (s *Store) Search(lang string, queryStr string, offset, limit int, fields [
 // GetBySheet returns items for a given sheet with pagination.
 // Returns early when offset+limit items are found to optimize performance.
 func (s *Store) GetBySheet(sheet string, offset, limit int, fields []string) (*SearchResult, error) {
+	if s.index == nil {
+		return nil, fmt.Errorf("index is not loaded")
+	}
+
 	from := float64(offset)
 	to := float64(offset + limit)
 

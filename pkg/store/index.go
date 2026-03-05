@@ -29,7 +29,7 @@ type ItemDocument struct {
 	Fr  string `json:"fr"`
 }
 
-func buildItemIndex() mapping.IndexMapping {
+func buildItemIndexMapping() mapping.IndexMapping {
 	keywordFieldMapping := bleve.NewTextFieldMapping()
 	keywordFieldMapping.Analyzer = keyword.Name
 
@@ -92,4 +92,64 @@ func indexItems(i bleve.Index, items []*Item) error {
 	timePerDoc := float64(indexDuration) / float64(count)
 	log.Printf("Indexed %d documents, in %.2fs (average %.2fms/doc)", count, indexDurationSeconds, timePerDoc/float64(time.Millisecond))
 	return nil
+}
+
+func buildItemIndex(dataDir string, indexDir string) (bleve.Index, error) {
+	log.Printf("Creating new index from %s to %s...", dataDir, indexDir)
+
+	mapping := buildItemIndexMapping()
+	idx, err := bleve.New(indexDir, mapping)
+	if err != nil {
+		return nil, fmt.Errorf("create bleve index: %w", err)
+	}
+
+	files, err := deepScanDataFiles(dataDir)
+	if err != nil {
+		return nil, fmt.Errorf("scan data files: %w", err)
+	}
+
+	log.Printf("loading %d files", len(files))
+
+	count := 0
+	sheetIndex := make(map[string]uint32)
+	for i, path := range files {
+		log.Printf("[%d/%d] loading file %s", i+1, len(files), path)
+		items, err := loadFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("load file %s: %w", path, err)
+		}
+
+		for _, it := range items {
+			// Assign index based on sheet and order in file
+			// Index is unique per sheet and follows the order items appear in files
+			if _, ok := sheetIndex[it.Sheet]; !ok {
+				sheetIndex[it.Sheet] = 0
+			}
+			it.Index = sheetIndex[it.Sheet]
+			sheetIndex[it.Sheet]++
+		}
+
+		// Index the item in Bleve
+		err = indexItems(idx, items)
+		if err != nil {
+			return nil, fmt.Errorf("index items: %w", err)
+		}
+
+		count += len(items)
+	}
+
+	log.Printf("loaded %d items from %d files", count, len(files))
+
+	return idx, nil
+}
+
+// BuildIndex builds a new Bleve index from dataDir and writes it to indexDir.
+// The index is built and closed so it can be loaded later with LoadStore.
+// Use deepScanDataFiles so nested directories (e.g. after extracting zip) are included.
+func BuildIndex(dataDir string, indexDir string) error {
+	idx, err := buildItemIndex(dataDir, indexDir)
+	if err != nil {
+		return err
+	}
+	return idx.Close()
 }
