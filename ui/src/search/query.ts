@@ -12,11 +12,25 @@ export interface ApiError {
   error: string
 }
 
+const sheetPrefix = 'filename:'
+
+function processQuery(searchParams: URLSearchParams, q: string) {
+  const parts = q.split(' ')
+
+  // Extract sheet from query
+  const sheetPart = parts.findIndex(part => part.startsWith(sheetPrefix))
+  if (sheetPart !== -1) {
+    searchParams.set('sheet', parts[sheetPart].slice(sheetPrefix.length))
+    parts.splice(sheetPart, 1)
+  }
+
+  searchParams.set('q', parts.filter(part => !!part).join(' '))
+}
+
 export async function searchApi(
   params: {
     lang: string
     q: string
-    sheet?: string
     offset?: number
     limit?: number
     fields?: string[]
@@ -25,10 +39,8 @@ export async function searchApi(
 ): Promise<ApiResponse<StringItem[]>> {
   const searchParams = new URLSearchParams()
   searchParams.set('lang', params.lang)
-  searchParams.set('q', params.q)
-  if (params.sheet) {
-    searchParams.set('sheet', params.sheet)
-  }
+  processQuery(searchParams, params.q)
+
   if (params.offset !== undefined) {
     searchParams.set('offset', params.offset.toString())
   }
