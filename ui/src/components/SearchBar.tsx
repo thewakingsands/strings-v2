@@ -4,6 +4,7 @@ import styled from '@emotion/styled'
 import { type LanguageOption, languageOptions } from '@/utils/language'
 import type { ISearchQuery } from '../search/useSearch'
 import { type ISearchFieldProps, SearchField } from './SearchField'
+import { css } from '@emotion/react'
 
 const Container = styled.div({
   display: 'flex',
@@ -15,14 +16,28 @@ const SearchContainer = styled.div({
   display: 'flex',
   gap: '8px',
   flex: 1,
+  flexWrap: 'wrap',
+})
+
+const SearchInputContainer = styled.div({
+  flexGrow: 100,
+  flexBasis: '200px',
 })
 
 const SelectContainer = styled.div({
-  minWidth: '100px',
+  flexGrow: 1,
+  flexShrink: 0,
+  flexBasis: '120px',
 })
 
 const MultiSelectContainer = styled.div({
-  minWidth: '150px',
+  flexGrow: 1,
+  flexShrink: 0,
+  flexBasis: '150px',
+})
+
+const fullWidth = css({
+  width: '100%',
 })
 
 export interface ISearchBarProps extends ISearchFieldProps {
@@ -80,7 +95,7 @@ function DisplayLanguagesSelect({
             size="large"
             tabIndex={0}
             text={`显示语言 (${items.length})`}
-            style={{ width: '100%' }}
+            css={fullWidth}
             endIcon="caret-down"
           />
         )}
@@ -132,6 +147,7 @@ function QueryLanguageSelect({
             languageOptions.find((opt) => opt.value === value)?.label ||
             '选择查询语言'
           }
+          css={fullWidth}
           endIcon="caret-down"
         />
       </Select>
@@ -159,9 +175,9 @@ export function SearchBar(props: ISearchBarProps) {
           value={props.language}
           onChange={props.onLanguageChange}
         />
-        <div style={{ flex: 1 }}>
+        <SearchInputContainer>
           <SearchField {...props} />
-        </div>
+        </SearchInputContainer>
         <DisplayLanguagesSelect
           value={props.displayLanguages}
           onChange={props.onDisplayLanguagesChange}
