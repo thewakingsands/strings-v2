@@ -43,11 +43,17 @@ COPY --from=go-builder /app/xivstrings .
 # Copy UI dist from builder
 COPY --from=ui-builder /app/ui/dist ./ui/dist
 
+# Persistent data: version file, strings/<version>/, index/<version>/
+# On first run the server will fetch latest ixion release and populate this.
 VOLUME /app/data
+
+# Optional: set to allow POST /api/version?token=... to trigger updates.
+# If unset, POST /api/version returns 403.
+# ENV XIVSTRINGS_UPDATE_TOKEN=
 
 # Expose port
 EXPOSE 8080
 
-# Run the application
-CMD ["./xivstrings", "-addr", ":8080"]
+# -data /app/data: use volume for version, strings, and index
+CMD ["./xivstrings", "-addr", ":8080", "-data", "/app/data"]
 
