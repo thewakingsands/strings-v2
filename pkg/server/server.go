@@ -34,6 +34,7 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
 	lang := strings.TrimSpace(query.Get("lang"))
 	q := strings.TrimSpace(query.Get("q"))
+	sheet := strings.TrimSpace(query.Get("sheet"))
 
 	if lang == "" {
 		writeError(w, http.StatusBadRequest, "missing lang query parameter")
@@ -58,7 +59,8 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "store not loaded")
 		return
 	}
-	results, err := st.Search(lang, q, offset, limit, fields)
+
+	results, err := st.Search(q, lang, sheet, offset, limit, fields)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -157,6 +159,7 @@ func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
+
 		if result.Updated {
 			newStore, err := store.LoadStore(result.StringDir, result.IndexDir)
 			if err != nil {

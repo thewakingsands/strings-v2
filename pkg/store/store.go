@@ -3,10 +3,10 @@ package store
 import (
 	"fmt"
 	"log"
-	"strings"
 	"time"
 
 	"github.com/blevesearch/bleve/v2"
+	"github.com/blevesearch/bleve/v2/search/query"
 )
 
 // Store keeps all items in memory and provides simple lookup helpers.
@@ -41,22 +41,32 @@ func LoadStore(dataDir string, indexDir string) (*Store, error) {
 
 var metaFields = []string{"sheet", "id", "index"}
 
+func parseSearchQuery(q string, lang string, sheet string) query.Query {
+	textQuery := bleve.NewMatchQuery(q)
+	textQuery.SetField(lang)
+
+	if sheet == "" {
+		return textQuery
+	}
+
+	sheetQuery := bleve.NewTermQuery(sheet)
+	sheetQuery.SetField("sheet")
+
+	return bleve.NewConjunctionQuery(
+		textQuery,
+		sheetQuery,
+	)
+}
+
 // Search finds items whose value in the given language contains the query substring.
 // If sheetFilter is non-empty, only items from that sheet are considered.
 // Uses Bleve full-text search for better performance and relevance.
-func (s *Store) Search(lang string, queryStr string, offset, limit int, fields []string) (*SearchResult, error) {
+func (s *Store) Search(q string, lang string, sheet string, offset, limit int, fields []string) (*SearchResult, error) {
 	if s.index == nil {
 		return nil, fmt.Errorf("index is not loaded")
 	}
 
-	q := strings.TrimSpace(queryStr)
-
-	if q == "" {
-		return nil, fmt.Errorf("query is empty")
-	}
-
-	query := bleve.NewMatchQuery(q)
-	query.SetField(lang)
+	query := parseSearchQuery(q, lang, sheet)
 
 	searchFields := make([]string, 0, len(fields)+len(metaFields))
 	searchFields = append(searchFields, metaFields...)
