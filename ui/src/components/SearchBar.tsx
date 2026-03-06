@@ -1,10 +1,10 @@
 import { Button } from '@blueprintjs/core'
 import { MultiSelect, Select } from '@blueprintjs/select'
+import { css } from '@emotion/react'
 import styled from '@emotion/styled'
 import { type LanguageOption, languageOptions } from '@/utils/language'
 import type { ISearchQuery } from '../search/useSearch'
 import { type ISearchFieldProps, SearchField } from './SearchField'
-import { css } from '@emotion/react'
 
 const Container = styled.div({
   display: 'flex',
@@ -156,12 +156,13 @@ function QueryLanguageSelect({
 }
 
 export function SearchBar(props: ISearchBarProps) {
-  const kw = props.previousQuery?.keyword?.keyword
+  const { previousQuery } = props
+  const kw = previousQuery?.keyword?.keyword
   const text = kw ? `返回搜索"${kw}"` : undefined
 
   return (
     <Container>
-      {props.previousQuery && (
+      {previousQuery && (
         <Button
           onClick={() => props.onBackClicked?.()}
           text={text}
@@ -171,13 +172,17 @@ export function SearchBar(props: ISearchBarProps) {
         />
       )}
       <SearchContainer>
-        <QueryLanguageSelect
-          value={props.language}
-          onChange={props.onLanguageChange}
-        />
-        <SearchInputContainer>
-          <SearchField {...props} />
-        </SearchInputContainer>
+        {!previousQuery && (
+          <>
+            <QueryLanguageSelect
+              value={props.language}
+              onChange={props.onLanguageChange}
+            />
+            <SearchInputContainer>
+              <SearchField {...props} />
+            </SearchInputContainer>
+          </>
+        )}
         <DisplayLanguagesSelect
           value={props.displayLanguages}
           onChange={props.onDisplayLanguagesChange}

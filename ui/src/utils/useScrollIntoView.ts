@@ -7,7 +7,7 @@ export function useScrollIntoView(selector: string, deps: unknown[]) {
         const dom = document.querySelector(selector)
         if (dom) {
           document.scrollingElement?.scrollTo({
-            top: (dom as HTMLElement).offsetTop,
+            top: (dom as HTMLElement).offsetTop - 100,
             behavior: 'smooth',
           })
         }

@@ -18,13 +18,13 @@ function processQuery(searchParams: URLSearchParams, q: string) {
   const parts = q.split(' ')
 
   // Extract sheet from query
-  const sheetPart = parts.findIndex(part => part.startsWith(sheetPrefix))
+  const sheetPart = parts.findIndex((part) => part.startsWith(sheetPrefix))
   if (sheetPart !== -1) {
     searchParams.set('sheet', parts[sheetPart].slice(sheetPrefix.length))
     parts.splice(sheetPart, 1)
   }
 
-  searchParams.set('q', parts.filter(part => !!part).join(' '))
+  searchParams.set('q', parts.filter((part) => !!part).join(' '))
 }
 
 export async function searchApi(
