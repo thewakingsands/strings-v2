@@ -12,7 +12,8 @@
       "src/**/*.tsx",
       "src/**/*.js",
       "src/**/*.jsx",
-      "tools/**/*.mjs"
+      "tools/**/*.mjs",
+      "vite.config.ts"
     ]
   },
   "formatter": {
