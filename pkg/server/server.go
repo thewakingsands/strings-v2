@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"xivstrings/pkg/store"
 	"xivstrings/pkg/version"
@@ -18,6 +19,27 @@ type Server struct {
 	store       *store.Store
 	baseDir     string
 	updateToken string // from XIVSTRINGS_UPDATE_TOKEN; empty means update not allowed
+
+	updateMu     sync.Mutex
+	updateStatus updateStatus
+}
+
+type updateState string
+
+const (
+	updateStateIdle    updateState = "idle"
+	updateStateRunning updateState = "running"
+	updateStateSuccess updateState = "success"
+	updateStateError   updateState = "error"
+)
+
+type updateStatus struct {
+	State      updateState `json:"state"`
+	StartedAt  string      `json:"startedAt,omitempty"`
+	FinishedAt string      `json:"finishedAt,omitempty"`
+	Version    string      `json:"version,omitempty"`
+	Updated    bool        `json:"updated,omitempty"`
+	Error      string      `json:"error,omitempty"`
 }
 
 // handleSearch implements:
@@ -126,9 +148,9 @@ func (s *Server) handleItems(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, response)
 }
 
-// handleVersion: GET returns current data version; POST triggers update (requires token).
-// GET /api/version -> { "version": "publish-20260303-8b409c8" }
-// POST /api/version?token=... -> { "version": "...", "updated": true|false }
+// handleVersion: GET returns current data version and update status; POST starts an async update job.
+// GET /api/version -> { "version": "publish-20260303-8b409c8", "update": { "state": "idle" } }
+// POST /api/version?token=... -> 202 Accepted with update status payload.
 // Token is set via environment variable XIVSTRINGS_UPDATE_TOKEN. If not set, POST returns 403.
 func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
@@ -138,7 +160,10 @@ func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"version": v})
+		writeJSON(w, http.StatusOK, map[string]any{
+			"version": v,
+			"update":  s.getUpdateStatus(),
+		})
 		return
 	case http.MethodPost:
 		if s.updateToken == "" {
@@ -154,23 +179,19 @@ func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusUnauthorized, "invalid token")
 			return
 		}
-		result, err := version.EnsureVersion(s.baseDir)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
+
+		status, started := s.startAsyncUpdate()
+		if !started {
+			writeJSON(w, http.StatusAccepted, map[string]any{
+				"message": "update already in progress",
+				"update":  status,
+			})
 			return
 		}
 
-		if result.Updated {
-			newStore, err := store.LoadStore(result.StringDir, result.IndexDir)
-			if err != nil {
-				writeError(w, http.StatusInternalServerError, "reload store after update: "+err.Error())
-				return
-			}
-			s.SetStore(newStore)
-		}
-		writeJSON(w, http.StatusOK, map[string]any{
-			"version": result.Version,
-			"updated": result.Updated,
+		writeJSON(w, http.StatusAccepted, map[string]any{
+			"message": "update started",
+			"update":  status,
 		})
 		return
 	default:
@@ -201,6 +222,9 @@ func CreateMux(config ServerConfig) *http.ServeMux {
 		store:       config.Store,
 		baseDir:     config.BaseDir,
 		updateToken: config.UpdateToken,
+		updateStatus: updateStatus{
+			State: updateStateIdle,
+		},
 	}
 
 	mux := http.NewServeMux()
@@ -238,6 +262,75 @@ func CreateMux(config ServerConfig) *http.ServeMux {
 	}))
 
 	return mux
+}
+
+func (s *Server) getUpdateStatus() updateStatus {
+	s.updateMu.Lock()
+	defer s.updateMu.Unlock()
+
+	return s.updateStatus
+}
+
+func (s *Server) startAsyncUpdate() (updateStatus, bool) {
+	s.updateMu.Lock()
+	if s.updateStatus.State == updateStateRunning {
+		status := s.updateStatus
+		s.updateMu.Unlock()
+		return status, false
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	s.updateStatus = updateStatus{
+		State:     updateStateRunning,
+		StartedAt: now,
+	}
+	status := s.updateStatus
+	s.updateMu.Unlock()
+
+	go s.runUpdate()
+	return status, true
+}
+
+func (s *Server) runUpdate() {
+	result, err := version.EnsureVersion(s.baseDir)
+	if err != nil {
+		s.finishUpdate(updateStatus{
+			State:      updateStateError,
+			StartedAt:  s.getUpdateStatus().StartedAt,
+			FinishedAt: time.Now().UTC().Format(time.RFC3339),
+			Error:      err.Error(),
+		})
+		return
+	}
+
+	if result.Updated {
+		newStore, err := store.LoadStore(result.StringDir, result.IndexDir)
+		if err != nil {
+			s.finishUpdate(updateStatus{
+				State:      updateStateError,
+				StartedAt:  s.getUpdateStatus().StartedAt,
+				FinishedAt: time.Now().UTC().Format(time.RFC3339),
+				Version:    result.Version,
+				Error:      "reload store after update: " + err.Error(),
+			})
+			return
+		}
+		s.SetStore(newStore)
+	}
+
+	s.finishUpdate(updateStatus{
+		State:      updateStateSuccess,
+		StartedAt:  s.getUpdateStatus().StartedAt,
+		FinishedAt: time.Now().UTC().Format(time.RFC3339),
+		Version:    result.Version,
+		Updated:    result.Updated,
+	})
+}
+
+func (s *Server) finishUpdate(status updateStatus) {
+	s.updateMu.Lock()
+	s.updateStatus = status
+	s.updateMu.Unlock()
 }
 
 // filterItemsByFields filters the values map of each item to only include the specified field languages.
