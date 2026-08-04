@@ -79,8 +79,10 @@ Each JSON file under the strings directory contains an array of items:
 
 - Search strings
   - Endpoint: `GET /api/search`
-  - Query parameters: `lang` required, `q` required, `sheet` optional, `offset` optional, `limit` optional
+  - Query parameters: `lang` required, `q` required, `sheet` optional, `fields` optional, `offset` optional, `limit` optional
   - Response: JSON with matching items and meta fields such as `total` and `elapsed`
+  - See [Searching several languages at once](#searching-several-languages-at-once) and
+    [Values and highlights](#values-and-highlights)
 
 - Get items by sheet
   - Endpoint: `GET /api/items`
@@ -91,3 +93,61 @@ Each JSON file under the strings directory contains an array of items:
   - `GET /api/version`: current data version and update status
   - `POST /api/version?token=...`: start async update from the latest ixion release
   - See [docs/update-api.md](docs/update-api.md) for the full contract
+
+### Searching several languages at once
+
+`lang` takes a comma separated list of language codes, and every one of them is
+searched in a single request:
+
+```bash
+curl "http://127.0.0.1:8080/api/search?lang=chs,en,ja&sheet=Item&q=onion"
+```
+
+- The order is the preference order. `lang=chs,en,ja` ranks a row that matched in `chs`
+  above one that matched only in `en`, which in turn ranks above one that matched only
+  in `ja`, the same as boosting `chs^3 en^2 ja^1`. A single language is scored exactly
+  as it was before this parameter accepted lists.
+- Blank segments and repeats are ignored, so `lang=chs,,en` and `lang=chs,chs,en` both
+  mean `lang=chs,en`.
+- An unknown code is rejected with `400 invalid lang: <code>`, matching how `fields`
+  already reports unknown languages. Earlier versions accepted anything and quietly
+  returned no results.
+- `meta.total` counts every matching row once, however many languages it matched in.
+
+Supported codes are `chs`, `tc`, `en`, `de`, `fr`, `ja`, `ko`.
+
+`fields` chooses which language columns come back and defaults to `chs,tc,en,ja`. It is
+independent of `lang`: searching a language that `fields` leaves out is allowed, and
+that language is simply absent from the response.
+
+### Values and highlights
+
+`values` holds the complete, raw value of each requested language column.
+`highlights` holds the matching snippet for each language the search actually hit:
+
+```json
+{
+  "sheet": "Item",
+  "rowId": "4785",
+  "values": {
+    "en": "wizard eggplant\nwizard eggplants\nA firm purple vegetable.\nWizard Eggplant",
+    "chs": "巫师茄子"
+  },
+  "highlights": {
+    "en": "wizard <mark>eggplant</mark>\nwizard eggplants\nA firm purple…"
+  },
+  "index": 12
+}
+```
+
+- `values` is the untouched game text. Nothing is escaped and nothing is truncated.
+- `highlights` is HTML escaped (`&amp;` `&lt;` `&gt;` `&#34;` `&#39;`), wraps matches in
+  `<mark>`, and is cut to roughly 200 characters around the best match with `…` marking
+  where text was dropped. Render it as HTML or unescape it before display.
+- A language only appears in `highlights` if the search matched it, so `highlights` is
+  absent from responses of `GET /api/items`, and absent from a row that matched in
+  another language. Its keys never go beyond what `fields` requested.
+
+Before this split, `values` carried the truncated snippet for the searched language,
+which made the full text unavailable to clients. Clients that relied on that snippet
+should read `highlights` and fall back to `values`.

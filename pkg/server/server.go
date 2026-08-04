@@ -43,10 +43,14 @@ type updateStatus struct {
 }
 
 // handleSearch implements:
-//  1. Provided language code and an input, search all items that contain input,
-//     return sheet name, rowId, and values from all languages.
+//  1. Provided one or more language codes and an input, search all items that contain
+//     input in any of those languages, return sheet name, rowId, and values from all
+//     languages.
 //
 // GET /search?lang=en&q=battle[&sheet=AchievementKind][&offset=0][&limit=100]
+//
+// lang accepts a comma separated list, ordered by decreasing preference:
+// lang=chs,en,ja ranks matches in chs above matches in en above matches in ja.
 func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -54,11 +58,15 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	}
 
 	query := r.URL.Query()
-	lang := strings.TrimSpace(query.Get("lang"))
 	q := strings.TrimSpace(query.Get("q"))
 	sheet := strings.TrimSpace(query.Get("sheet"))
 
-	if lang == "" {
+	langs, err := parseLangs(query.Get("lang"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if len(langs) == 0 {
 		writeError(w, http.StatusBadRequest, "missing lang query parameter")
 		return
 	}
@@ -82,7 +90,7 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	results, err := st.Search(q, lang, sheet, offset, limit, fields)
+	results, err := st.Search(q, langs, sheet, offset, limit, fields)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

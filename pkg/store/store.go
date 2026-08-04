@@ -41,9 +41,28 @@ func LoadStore(dataDir string, indexDir string) (*Store, error) {
 
 var metaFields = []string{"sheet", "id", "index"}
 
-func parseSearchQuery(q string, lang string, sheet string) query.Query {
-	textQuery := bleve.NewMatchQuery(q)
-	textQuery.SetField(lang)
+// parseSearchQuery matches q against every language in langs, ranking earlier
+// languages above later ones.
+func parseSearchQuery(q string, langs []string, sheet string) query.Query {
+	disjuncts := make([]query.Query, 0, len(langs))
+	for i, lang := range langs {
+		matchQuery := bleve.NewMatchQuery(q)
+		matchQuery.SetField(lang)
+		// Position in langs is the caller's preference order, so langs=chs,en,ja means
+		// chs^3 en^2 ja^1. A single language is left unboosted so that its scores stay
+		// bit for bit identical to a search that never knew about multiple languages.
+		if len(langs) > 1 {
+			matchQuery.SetBoost(float64(len(langs) - i))
+		}
+		disjuncts = append(disjuncts, matchQuery)
+	}
+
+	var textQuery query.Query
+	if len(disjuncts) == 1 {
+		textQuery = disjuncts[0]
+	} else {
+		textQuery = bleve.NewDisjunctionQuery(disjuncts...)
+	}
 
 	if sheet == "" {
 		return textQuery
@@ -58,15 +77,19 @@ func parseSearchQuery(q string, lang string, sheet string) query.Query {
 	)
 }
 
-// Search finds items whose value in the given language contains the query substring.
+// Search finds items whose value in any of the given languages matches the query.
+// Items matching in an earlier language rank above items matching in a later one.
 // If sheetFilter is non-empty, only items from that sheet are considered.
 // Uses Bleve full-text search for better performance and relevance.
-func (s *Store) Search(q string, lang string, sheet string, offset, limit int, fields []string) (*SearchResult, error) {
+func (s *Store) Search(q string, langs []string, sheet string, offset, limit int, fields []string) (*SearchResult, error) {
 	if s.index == nil {
 		return nil, fmt.Errorf("index is not loaded")
 	}
+	if len(langs) == 0 {
+		return nil, fmt.Errorf("no search language given")
+	}
 
-	query := parseSearchQuery(q, lang, sheet)
+	query := parseSearchQuery(q, langs, sheet)
 
 	searchFields := make([]string, 0, len(fields)+len(metaFields))
 	searchFields = append(searchFields, metaFields...)
@@ -75,6 +98,11 @@ func (s *Store) Search(q string, lang string, sheet string, offset, limit int, f
 	request := bleve.NewSearchRequestOptions(query, limit, offset, false)
 	request.Fields = searchFields
 	request.Highlight = bleve.NewHighlightWithStyle("html")
+	// Without an explicit list Bleve highlights every field the query touched, which
+	// includes the sheet filter term. Restrict it to the languages actually searched.
+	for _, lang := range langs {
+		request.Highlight.AddField(lang)
+	}
 
 	searchResults, err := s.index.Search(request)
 	if err != nil {

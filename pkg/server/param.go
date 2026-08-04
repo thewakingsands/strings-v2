@@ -39,6 +39,34 @@ func parseOffsetLimit(query url.Values) (offset, limit int) {
 	return offset, limit
 }
 
+// parseLangs parses the comma separated lang parameter into the languages to search.
+// Blank segments are dropped and duplicates are removed, keeping the order of first
+// appearance: callers express their language preference through that order.
+// An all-blank value yields an empty slice and no error, so the caller can keep
+// reporting it as a missing parameter rather than an invalid one.
+func parseLangs(raw string) ([]string, error) {
+	parts := strings.Split(raw, ",")
+
+	langs := make([]string, 0, len(parts))
+	seen := make(map[string]bool, len(parts))
+	for _, part := range parts {
+		lang := strings.TrimSpace(part)
+		if lang == "" {
+			continue
+		}
+		if !slices.Contains(constant.Languages, lang) {
+			return nil, fmt.Errorf("invalid lang: %s", lang)
+		}
+		if seen[lang] {
+			continue
+		}
+		seen[lang] = true
+		langs = append(langs, lang)
+	}
+
+	return langs, nil
+}
+
 func parseFields(query url.Values) ([]string, error) {
 	fields := query.Get("fields")
 	if fields == "" {

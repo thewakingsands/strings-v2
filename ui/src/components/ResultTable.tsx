@@ -194,11 +194,19 @@ export function ResultTable(props: IResultTableProps) {
                 </LinkButton>
               </CellPosition>
               {displayLanguages.map((lang) => {
-                const value = item.values[lang]
+                // Prefer the server side snippet so a long value stays readable in the
+                // table, and fall back to the complete value when this language had no
+                // match of its own.
+                const highlight = item.highlights?.[lang]
+                const value = highlight ?? item.values[lang]
                 const label = languageMap[lang as keyof typeof languageMap]
                 return (
                   <CellLang key={lang} data-label={label}>
-                    <div>{value ? highlightText(value, keyword) : ''}</div>
+                    <div>
+                      {value
+                        ? highlightText(value, keyword, highlight !== undefined)
+                        : ''}
+                    </div>
                   </CellLang>
                 )
               })}
