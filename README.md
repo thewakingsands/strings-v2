@@ -39,6 +39,13 @@ On first run, or when the version changes, the server fetches the latest
 downloads `strings.zip`, extracts to `data/strings/<version>/`, and builds the
 index under `data/index/<version>/`.
 
+If that release check fails, from a network outage or a GitHub rate limit, the
+server logs the failure and starts anyway on the version named in `data/version`,
+serving that data unchanged. It only refuses to start when there is nothing local
+to fall back to, such as a first deployment with no connectivity. Nothing is
+retried in the background, so a degraded start keeps serving the older data until
+someone triggers `POST /api/version`.
+
 ### Version and update
 
 - `GET /api/version` returns the current data version and the latest update status

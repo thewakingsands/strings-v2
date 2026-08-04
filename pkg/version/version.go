@@ -197,6 +197,54 @@ func EnsureVersion(baseDir string) (*EnsureResult, error) {
 	}, nil
 }
 
+// ResolveLocalVersion reports the data already on disk, without contacting GitHub.
+// It is the fallback for starting up when the release check fails, so that a
+// GitHub outage cannot take the server down while usable data sits in baseDir.
+//
+// Only the version file is trusted. UpdateToVersion writes it last, after the
+// index is built, so it never names a half built index: if a previous update died
+// while indexing, the file still names the version before it, which is exactly the
+// one to fall back to.
+func ResolveLocalVersion(baseDir string) (*EnsureResult, error) {
+	baseDir, err := filepath.Abs(baseDir)
+	if err != nil {
+		return nil, fmt.Errorf("resolve base dir: %w", err)
+	}
+
+	local, err := GetLocalVersion(baseDir)
+	if err != nil {
+		return nil, err
+	}
+	if local == "" {
+		return nil, fmt.Errorf("no version recorded in %s", filepath.Join(baseDir, "version"))
+	}
+
+	stringDir := filepath.Join(baseDir, "strings", local)
+	indexDir := filepath.Join(baseDir, "index", local)
+
+	// Either one is enough: LoadStore opens the index when it is there and rebuilds
+	// it from the strings otherwise, and rebuilding needs no network.
+	indexExists := dirExists(indexDir)
+	if !indexExists && !dirExists(stringDir) {
+		return nil, fmt.Errorf("version %s has neither %s nor %s", local, indexDir, stringDir)
+	}
+	if !indexExists {
+		log.Printf("no index at %s, it will be rebuilt from %s", indexDir, stringDir)
+	}
+
+	return &EnsureResult{
+		Version:   local,
+		StringDir: stringDir,
+		IndexDir:  indexDir,
+		Updated:   false,
+	}, nil
+}
+
+func dirExists(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.IsDir()
+}
+
 func downloadFile(url string, dest string) error {
 	log.Printf("Downloading %s ...", url)
 	client := &http.Client{Timeout: 10 * time.Minute}

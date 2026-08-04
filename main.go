@@ -17,9 +17,17 @@ func main() {
 	uiDir := flag.String("ui", "ui/dist", "directory containing UI static files")
 	flag.Parse()
 
+	// A GitHub outage must not keep the server down when the data is already here.
+	// Only startup degrades like this: POST /api/version asks for an update on
+	// purpose, so runUpdate still reports the failure instead of quietly succeeding.
 	result, err := version.EnsureVersion(*dataDir)
 	if err != nil {
-		log.Fatalf("failed to ensure version: %v", err)
+		log.Printf("could not check the latest release: %v", err)
+		result, err = version.ResolveLocalVersion(*dataDir)
+		if err != nil {
+			log.Fatalf("no usable local data, cannot start: %v", err)
+		}
+		log.Printf("continuing with local data, version %s", result.Version)
 	}
 	log.Printf("using version %s (data: %s, index: %s)", result.Version, result.StringDir, result.IndexDir)
 
