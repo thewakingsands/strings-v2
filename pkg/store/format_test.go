@@ -68,6 +68,8 @@ func TestFormatItemFromHitReportsHighlightsSeparately(t *testing.T) {
 	if len(item.Highlights) != 1 {
 		t.Errorf("highlights = %v, want only the en entry", item.Highlights)
 	}
+	// chs has no fragment on this hit at all, which is different from having one without
+	// a mark: nothing to report either way.
 	if _, ok := item.Highlights["chs"]; ok {
 		t.Errorf("highlights[chs] = %q, want no entry because chs has no fragment", item.Highlights["chs"])
 	}
@@ -86,16 +88,21 @@ func TestFormatItemFromHitSkipsMetaFields(t *testing.T) {
 	}
 }
 
-func TestFormatItemFromHitIgnoresFragmentWithoutMatch(t *testing.T) {
+// A field the query never matched still gets its fragment reported. That fragment is
+// just the head of the value with no <mark> in it, which is exactly what a column with
+// nothing to highlight should show, and keeping it is what trims every column of a row to
+// a comparable length instead of one showing a snippet beside thousands of characters.
+func TestFormatItemFromHitKeepsFragmentWithoutMatch(t *testing.T) {
 	hit := newTestHit()
-	// A highlighted field that the query never matched still gets a fragment from
-	// Bleve, but it is only the head of the value and carries no <mark>.
 	hit.Fragments["chs"] = []string{"巫师茄…"}
 
 	item := formatItemFromHit(hit)
 
-	if got, ok := item.Highlights["chs"]; ok {
-		t.Errorf("highlights[chs] = %q, want no entry because chs has no term locations", got)
+	if got := item.Highlights["chs"]; got != "巫师茄…" {
+		t.Errorf("highlights[chs] = %q, want the unmarked preview", got)
+	}
+	if strings.Contains(item.Highlights["chs"], "<mark>") {
+		t.Errorf("highlights[chs] = %q, want no mark on a preview", item.Highlights["chs"])
 	}
 	if item.Values["chs"] != "巫师茄子" {
 		t.Errorf("values[chs] = %q, want the complete value %q", item.Values["chs"], "巫师茄子")

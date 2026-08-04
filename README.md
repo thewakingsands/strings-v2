@@ -153,8 +153,8 @@ that language is simply absent from the response.
 
 ### Values and highlights
 
-`values` holds the complete, raw value of each requested language column.
-`highlights` holds the matching snippet for each language the search actually hit:
+`values` holds the complete, raw value of each requested language column, and
+`highlights` holds a short snippet of each one:
 
 ```json
 {
@@ -165,7 +165,8 @@ that language is simply absent from the response.
     "chs": "巫师茄子"
   },
   "highlights": {
-    "en": "wizard <mark>eggplant</mark>\nwizard eggplants\nA firm purple…"
+    "en": "wizard <mark>eggplant</mark>\nwizard eggplants\nA firm purple…",
+    "chs": "巫师茄子"
   },
   "index": 12
 }
@@ -175,9 +176,14 @@ that language is simply absent from the response.
 - `highlights` is HTML escaped (`&amp;` `&lt;` `&gt;` `&#34;` `&#39;`), wraps matches in
   `<mark>`, and is cut to roughly 200 characters around the best match with `…` marking
   where text was dropped. Render it as HTML or unescape it before display.
-- A language only appears in `highlights` if the search matched it, so `highlights` is
-  absent from responses of `GET /api/items`, and absent from a row that matched in
-  another language. Its keys never go beyond what `fields` requested.
+- Every language in `fields` gets a snippet, not only the ones searched. A language the
+  query matched has its matches wrapped in `<mark>`; one it did not match is simply the
+  start of the value. Both are cut by the same fragmenter, so all the columns of a row
+  come back a comparable length rather than one snippet beside thousands of characters.
+- Matching for a language outside `lang` runs that language's own analyzer, so it agrees
+  with the index: quotes are separators, English is stemmed, and CJK is cut into bigrams.
+  A query typed with `"Software"` therefore highlights a value stored with `“Software”`.
+- `GET /api/items` does no matching and returns no `highlights` at all.
 
 Before this split, `values` carried the truncated snippet for the searched language,
 which made the full text unavailable to clients. Clients that relied on that snippet

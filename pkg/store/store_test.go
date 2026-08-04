@@ -328,11 +328,13 @@ func TestSearchHighlightsAreEscapedWhileValuesAreRaw(t *testing.T) {
 	}
 }
 
-func TestSearchOmitsHighlightForLanguagesThatDidNotMatch(t *testing.T) {
+// A language that was searched but found nothing on this row gets a fragment without a
+// mark. It is a preview, not a claim of a match, and having one keeps the row's columns
+// the same length.
+func TestSearchPreviewsSearchedLanguagesThatDidNotMatch(t *testing.T) {
 	st := newTestStore(t)
 
-	// Item#1 matches in chs only. Bleve still fragments the en column because it is a
-	// highlighted field, but that fragment holds no match and must not be reported.
+	// Item#1 matches in chs only.
 	result, err := st.Search("onion", []string{"chs", "en"}, "Item", 0, 100, searchTestFields)
 	if err != nil {
 		t.Fatalf("search: %v", err)
@@ -344,8 +346,12 @@ func TestSearchOmitsHighlightForLanguagesThatDidNotMatch(t *testing.T) {
 	}
 	item := result.Items[rank]
 
-	if _, ok := item.Highlights["en"]; ok {
-		t.Errorf("highlights[en] = %q, want no entry because en did not match", item.Highlights["en"])
+	preview, ok := item.Highlights["en"]
+	if !ok {
+		t.Errorf("highlights[en] missing, got %v", item.Highlights)
+	}
+	if strings.Contains(preview, "<mark>") {
+		t.Errorf("highlights[en] = %q, want no mark because en did not match", preview)
 	}
 	if got := item.Highlights["chs"]; !strings.Contains(got, "<mark>onion</mark>") {
 		t.Errorf("highlights[chs] = %q, want it to mark the match", got)

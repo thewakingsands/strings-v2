@@ -193,6 +193,11 @@ func (s *Store) Search(q string, langs []string, sheet string, offset, limit int
 		return nil, fmt.Errorf("search error: %w", err)
 	}
 
+	// Bleve only fragmented the languages it searched. Give the rest one too, so every
+	// column of a row is trimmed alike instead of one showing a snippet next to thousands
+	// of characters.
+	s.addDisplayFragments(searchResults.Hits, q, langs, fields)
+
 	items := make([]*Item, 0, len(searchResults.Hits))
 	for _, hit := range searchResults.Hits {
 		items = append(items, formatItemFromHit(hit))

@@ -34,12 +34,10 @@ func formatItemFromHit(hit *search.DocumentMatch) *Item {
 		}
 		values[key] = text
 
-		// Bleve fragments every highlighted field, even ones the query never matched,
-		// and such a fragment is just the head of the value with no <mark> in it. Only
-		// fields with term locations carry a real highlight.
-		if len(hit.Locations[key]) == 0 {
-			continue
-		}
+		// Every requested language gets a fragment, whether or not it matched. One that
+		// matched carries <mark>; one that did not is the head of the value, which is
+		// what a column with nothing to highlight should show. Both are trimmed by the
+		// same fragmenter, which is what keeps the columns comparable in length.
 		fragments, ok := hit.Fragments[key]
 		if !ok || len(fragments) == 0 {
 			continue
