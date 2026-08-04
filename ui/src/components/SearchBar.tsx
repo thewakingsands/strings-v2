@@ -28,13 +28,8 @@ const SearchInputContainer = styled.div({
   flexBasis: '200px',
 })
 
-const SelectContainer = styled.div({
-  flexGrow: 1,
-  flexShrink: 0,
-  flexBasis: '120px',
-})
-
-const MultiSelectContainer = styled.div({
+// Both language pickers share this so they stay the same width as each other.
+const LanguageSelectContainer = styled.div({
   flexGrow: 1,
   flexShrink: 0,
   flexBasis: '150px',
@@ -106,7 +101,7 @@ function DisplayLanguagesSelect({
   onChange: (value: string[]) => void
 }) {
   return (
-    <MultiSelectContainer>
+    <LanguageSelectContainer>
       <MultiSelect<LanguageOption>
         customTarget={(items) => (
           <Button
@@ -138,7 +133,7 @@ function DisplayLanguagesSelect({
         popoverProps={{ placement: 'bottom-end' }}
         placeholder="选择显示语言"
       />
-    </MultiSelectContainer>
+    </LanguageSelectContainer>
   )
 }
 
@@ -162,7 +157,7 @@ function QueryLanguageSelect({
   }
 
   return (
-    <SelectContainer>
+    <LanguageSelectContainer>
       <MultiSelect<LanguageOption>
         customTarget={(items) => (
           <Button
@@ -190,7 +185,7 @@ function QueryLanguageSelect({
         popoverProps={{ placement: 'bottom-start' }}
         placeholder="选择查询语言"
       />
-    </SelectContainer>
+    </LanguageSelectContainer>
   )
 }
 
