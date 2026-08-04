@@ -3,6 +3,7 @@ package store
 import (
 	"fmt"
 	"log"
+	"slices"
 	"time"
 
 	"github.com/blevesearch/bleve/v2"
@@ -29,6 +30,15 @@ type ItemDocument struct {
 	Fr  string `json:"fr"`
 }
 
+// cjkAnalyzedLanguages name the fields analyzed with bleve's cjk analyzer, which cuts
+// CJK text into bigrams. Every other language uses an analyzer that cuts each CJK
+// character into a token of its own, and parseSearchQuery depends on that difference.
+var cjkAnalyzedLanguages = []string{"chs", "tc", "ja", "ko"}
+
+func usesCJKAnalyzer(lang string) bool {
+	return slices.Contains(cjkAnalyzedLanguages, lang)
+}
+
 func buildItemIndexMapping() mapping.IndexMapping {
 	keywordFieldMapping := bleve.NewTextFieldMapping()
 	keywordFieldMapping.Analyzer = keyword.Name
@@ -53,10 +63,9 @@ func buildItemIndexMapping() mapping.IndexMapping {
 	itemMapping.AddFieldMappingsAt("sheet", keywordFieldMapping)
 	itemMapping.AddFieldMappingsAt("index", numericFieldMapping)
 
-	itemMapping.AddFieldMappingsAt("chs", cjkAnalyzer)
-	itemMapping.AddFieldMappingsAt("tc", cjkAnalyzer)
-	itemMapping.AddFieldMappingsAt("ja", cjkAnalyzer)
-	itemMapping.AddFieldMappingsAt("ko", cjkAnalyzer)
+	for _, lang := range cjkAnalyzedLanguages {
+		itemMapping.AddFieldMappingsAt(lang, cjkAnalyzer)
+	}
 
 	itemMapping.AddFieldMappingsAt("en", enAnalyzer)
 	itemMapping.AddFieldMappingsAt("de", deAnalyzer)

@@ -50,6 +50,38 @@ var relevanceCases = []relevanceCase{
 		},
 	},
 	{
+		// Reported from production: the head used to be rows whose en column was never
+		// translated and still holds CJK (街人A, 大爆発, 大放電), matching on a single
+		// stray character while the Chinese column's 魔晶石师傅 was buried.
+		//
+		// Addon#15177 at the top is a known blemish, not the thing under test: its ja
+		// column reads 大人気, so the bigram 大人 matches by coincidence of adjacency.
+		// Suppressing that needs phrase or AND semantics, a separate decision. Re-pin
+		// this case if that ever lands.
+		name:      "chinese match beats untranslated english column",
+		query:     "师傅大人",
+		langs:     []string{"chs", "en", "ja"},
+		wantTotal: 6407,
+		wantTop: []string{
+			"Addon#15177",
+			"PlaceName#1296",
+			"Completion#1231",
+		},
+	},
+	{
+		// The other half of the same fix: damping is a multiplier, so searching one
+		// language on its own keeps its order, and untranslated text stays findable.
+		name:      "untranslated text is still findable in the en column",
+		query:     "街人",
+		langs:     []string{"en"},
+		wantTotal: 35,
+		wantTop: []string{
+			"ENpcResident#1007198",
+			"ENpcResident#1007201",
+			"ENpcResident#1007202",
+		},
+	},
+	{
 		name:      "cjk single language",
 		query:     "圆葱",
 		langs:     []string{"chs"},
@@ -75,6 +107,16 @@ var relevanceCases = []relevanceCase{
 		sheet:     "Item",
 		wantTotal: 2,
 		wantTop:   []string{"Item#4788", "Item#37640"},
+	},
+	{
+		// A Latin query with a language that is not the first one: confirms the accented
+		// alphabets are not mistaken for a non-Latin script and damped.
+		name:      "german stays undamped",
+		query:     "Zwiebel",
+		langs:     []string{"de"},
+		sheet:     "Item",
+		wantTotal: 20,
+		wantTop:   []string{"Item#3513", "Item#3279", "Item#36097"},
 	},
 }
 

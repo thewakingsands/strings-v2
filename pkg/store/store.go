@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"time"
+	"unicode"
 
 	"github.com/blevesearch/bleve/v2"
 	"github.com/blevesearch/bleve/v2/search/query"
@@ -76,18 +77,48 @@ var metaFields = []string{"sheet", "id", "index"}
 // one. This only settles the order when the languages score about the same.
 const languageBoostStep = 0.01
 
+// nonNativeScriptBoost damps the languages whose analyzer can only match the query
+// character by character.
+//
+// A query with no Latin letters is cut into single characters on an en, de or fr field,
+// so it matches rows whose column was never translated and still holds CJK. Those
+// matches score absurdly high: the values are short, and a lone CJK character appears
+// in so few English rows that its IDF dwarfs a proper word match in a Chinese column.
+// dis_max cannot pick the better language when one of the scores is inflated to begin
+// with, so the inflated one is scaled back into a comparable range.
+//
+// A multiplier is the point: it applies to every document in that field alike, so
+// searching only that language comes back in exactly the same order, and looking for
+// untranslated text in the en column keeps working. Recall is untouched either way.
+//
+// Measured against the real corpus, anything at or below 0.5 already pushes the noise
+// off the first page; this sits an order of magnitude further down so that queries with
+// an even wider IDF gap between the columns are covered too.
+const nonNativeScriptBoost = 0.05
+
 // parseSearchQuery matches q against every language in langs, ranking earlier
 // languages above later ones when they are otherwise equally good.
 func parseSearchQuery(q string, langs []string, sheet string) query.Query {
+	nonLatin := isNonLatinQuery(q)
+
 	disjuncts := make([]query.Query, 0, len(langs))
 	for i, lang := range langs {
 		matchQuery := bleve.NewMatchQuery(q)
 		matchQuery.SetField(lang)
-		// The first language is left alone, which keeps a single language search scoring
-		// bit for bit as it did before this parameter accepted a list.
+
+		boost := 1.0
 		if i > 0 {
-			matchQuery.SetBoost(1 - float64(i)*languageBoostStep)
+			boost = 1 - float64(i)*languageBoostStep
 		}
+		if nonLatin && !usesCJKAnalyzer(lang) {
+			boost *= nonNativeScriptBoost
+		}
+		// Left alone at exactly 1, which keeps a single language Latin search scoring
+		// bit for bit as it did before this parameter accepted a list.
+		if boost != 1 {
+			matchQuery.SetBoost(boost)
+		}
+
 		disjuncts = append(disjuncts, matchQuery)
 	}
 
@@ -109,6 +140,24 @@ func parseSearchQuery(q string, langs []string, sheet string) query.Query {
 		textQuery,
 		sheetQuery,
 	)
+}
+
+// isNonLatinQuery reports whether the query has letters and none of them are Latin.
+// Such a query carries no word an en, de or fr analyzer can recognise, so those fields
+// can only match it a character at a time. German ü and French é are Latin letters, and
+// digits or punctuation on their own do not make a query non-Latin.
+func isNonLatinQuery(q string) bool {
+	found := false
+	for _, r := range q {
+		if !unicode.IsLetter(r) {
+			continue
+		}
+		if unicode.Is(unicode.Latin, r) {
+			return false
+		}
+		found = true
+	}
+	return found
 }
 
 // Search finds items whose value in any of the given languages matches the query.
