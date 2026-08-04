@@ -20,16 +20,45 @@ type SearchResult struct {
 	Elapsed time.Duration
 }
 
-// LoadStore loads all JSON files from dataDir into memory.
+// indexOpenTimeout bounds the wait for the index lock. Opening takes milliseconds
+// when nothing holds it, so a wait this long means someone else has it and failing
+// with a message beats blocking forever, which gives no clue at all.
+const indexOpenTimeout = "30s"
+
+// openIndexReadOnly opens an index for querying only, waiting at most boltTimeout
+// (a Go duration string) for the index lock.
+//
+// Read only means scorch takes a shared lock on root.bolt instead of an exclusive
+// one, so several instances can serve from one index directory at once, and it also
+// leaves the persister and merger goroutines unstarted.
+//
+// This makes "the running server never writes" a hard requirement rather than a
+// preference: Scorch.Batch does not check the read only flag, so an accidental write
+// would block waiting for a persister that was never started, instead of failing.
+// Writes belong solely to BuildIndex, which opens its own writable index and closes
+// it before anything serves queries from it.
+func openIndexReadOnly(indexDir string, boltTimeout string) (bleve.Index, error) {
+	return bleve.OpenUsing(indexDir, map[string]interface{}{
+		"read_only":    true,
+		"bolt_timeout": boltTimeout,
+	})
+}
+
+// LoadStore opens the index at indexDir for querying, building it from the JSON files
+// in dataDir first if it is not there yet.
 func LoadStore(dataDir string, indexDir string) (*Store, error) {
-	idx, err := bleve.Open(indexDir)
+	idx, err := openIndexReadOnly(indexDir, indexOpenTimeout)
 	if err == bleve.ErrorIndexPathDoesNotExist {
-		idx, err = buildItemIndex(dataDir, indexDir)
-		if err != nil {
+		// Building needs write access, so it runs on its own index instance and closes
+		// it. Only then is the result opened read only for serving.
+		if err := BuildIndex(dataDir, indexDir); err != nil {
 			return nil, fmt.Errorf("build item index: %w", err)
 		}
-	} else if err != nil {
-		return nil, fmt.Errorf("create bleve index: %w", err)
+		idx, err = openIndexReadOnly(indexDir, indexOpenTimeout)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("open bleve index %s (another instance may hold a write lock on it): %w",
+			indexDir, err)
 	}
 
 	s := &Store{

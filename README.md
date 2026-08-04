@@ -46,6 +46,30 @@ to fall back to, such as a first deployment with no connectivity. Nothing is
 retried in the background, so a degraded start keeps serving the older data until
 someone triggers `POST /api/version`.
 
+### Running several instances
+
+A serving instance opens its index read only and never writes to it, so the index
+takes a shared lock and any number of instances can serve from one `data` directory
+at the same time:
+
+```bash
+go run . -addr ":8080" -data /srv/xivstrings &
+go run . -addr ":8081" -data /srv/xivstrings &
+```
+
+Two things to know when scaling out:
+
+- **The first index build needs one instance on its own.** Building writes, which
+  takes an exclusive lock, so bring up a single instance until `data/index/<version>/`
+  exists and only then start the rest. An instance that cannot get the lock gives up
+  after 30 seconds and reports it rather than hanging.
+- **An update only reaches the instance that ran it.** `POST /api/version` builds the
+  new index and swaps the store on that one instance; the others keep serving the
+  version they opened at startup. They pick up the new one when restarted, since
+  `data/version` has already been rewritten. Building writes to
+  `data/index/<new version>/`, a different directory from the one the others are
+  reading, so it never disturbs them.
+
 ### Version and update
 
 - `GET /api/version` returns the current data version and the latest update status
