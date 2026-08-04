@@ -1,7 +1,9 @@
-import { Colors } from '@blueprintjs/core'
+import { Colors, Icon } from '@blueprintjs/core'
 import styled from '@emotion/styled'
+import { type ReactNode, useState } from 'react'
 import type { StringItem } from '@/search/interface'
 import { highlightText } from '@/utils/highlight'
+import { markedWords, resolveExpandedSegments } from '@/utils/highlightSegments'
 import { languageMap } from '@/utils/language'
 import { useScrollIntoView } from '../utils/useScrollIntoView'
 
@@ -81,6 +83,8 @@ const CellPosition = styled.div({
   fontFamily: 'monospace',
   whiteSpace: 'pre-wrap',
   wordBreak: 'break-word',
+  // Anchors the expand toggle to the bottom left of this cell.
+  position: 'relative',
   [`@media (max-width: ${MOBILE_BREAKPOINT - 1}px)`]: {
     flex: 'none',
     width: '100%',
@@ -91,6 +95,30 @@ const CellPosition = styled.div({
     paddingBottom: 8,
     paddingLeft: 0,
     paddingRight: 0,
+  },
+})
+
+// Deliberately faint: it is there when looked for and out of the way otherwise.
+const ExpandToggle = styled.button({
+  position: 'absolute',
+  bottom: 4,
+  left: 8,
+  padding: 0,
+  margin: 0,
+  border: 0,
+  lineHeight: 1,
+  backgroundColor: 'transparent',
+  color: Colors.LIGHT_GRAY1,
+  cursor: 'pointer',
+  '&:hover': {
+    color: Colors.GRAY1,
+  },
+  [`@media (max-width: ${MOBILE_BREAKPOINT - 1}px)`]: {
+    // The position cell is a full width row on mobile, so keep the toggle clear of the
+    // language rows underneath it.
+    bottom: 8,
+    left: 'auto',
+    right: 0,
   },
 })
 
@@ -153,6 +181,42 @@ const LinkButton = styled.button({
   },
 })
 
+/**
+ * Collapsed shows the server's snippet, which every requested language now has, so the
+ * columns of a row are trimmed alike. Expanded shows the complete value, highlighted from
+ * the words the server marked in that snippet — those have been through its analyzer, so
+ * the browser does not need to know about stemming or CJK segmentation to place them.
+ */
+function renderCell(
+  item: StringItem,
+  lang: string,
+  keyword: string,
+  expanded: boolean,
+): ReactNode {
+  const fragment = item.highlights?.[lang]
+  const value = item.values[lang]
+
+  if (!expanded) {
+    const text = fragment ?? value
+    return text ? highlightText(text, keyword, fragment !== undefined) : ''
+  }
+  if (!value) return ''
+
+  return resolveExpandedSegments(
+    value,
+    keyword,
+    markedWords(fragment ?? '', true),
+  ).map((segment, i) =>
+    segment.marked ? (
+      // Segments come out in document order, so the index is a stable key.
+      // biome-ignore lint/suspicious/noArrayIndexKey: order is fixed by the text
+      <em key={i}>{segment.text}</em>
+    ) : (
+      segment.text
+    ),
+  )
+}
+
 export interface IResultTableProps {
   items: StringItem[]
   onContextButtonClick?: (item: StringItem) => void
@@ -164,6 +228,20 @@ export interface IResultTableProps {
 export function ResultTable(props: IResultTableProps) {
   const { items, keyword, displayLanguages } = props
   useScrollIntoView('[data-highlight-row="true"]', [props.highlightItem])
+
+  // Keyed by row rather than by index, so paging simply shows rows that are not in the
+  // set and therefore collapsed, while paging back keeps whatever was open.
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set())
+
+  const toggleExpanded = (key: string) => {
+    setExpanded((current) => {
+      const next = new Set(current)
+      if (!next.delete(key)) {
+        next.add(key)
+      }
+      return next
+    })
+  }
 
   return (
     <ScrollableContainer>
@@ -180,6 +258,11 @@ export function ResultTable(props: IResultTableProps) {
           const isHighlight =
             item.sheet === props.highlightItem?.sheet &&
             item.rowId === props.highlightItem?.rowId
+          const rowKey = `${item.sheet}#${item.rowId}`
+          // Only rows whose values were trimmed have anything to reveal. Items from
+          // /api/items carry no highlights and are already shown in full.
+          const canExpand = item.highlights !== undefined
+          const isExpanded = canExpand && expanded.has(rowKey)
           return (
             <ItemRow
               key={`${item.sheet}-${item.rowId}-${idx}`}
@@ -192,21 +275,27 @@ export function ResultTable(props: IResultTableProps) {
                 <LinkButton onClick={() => props.onContextButtonClick?.(item)}>
                   搜索上下文
                 </LinkButton>
+                {canExpand && (
+                  <ExpandToggle
+                    onClick={() => toggleExpanded(rowKey)}
+                    title={isExpanded ? '收起' : '展开完整文本'}
+                    aria-label={isExpanded ? '收起' : '展开完整文本'}
+                    aria-expanded={isExpanded}
+                  >
+                    <Icon
+                      icon={
+                        isExpanded ? 'double-chevron-up' : 'double-chevron-down'
+                      }
+                      size={12}
+                    />
+                  </ExpandToggle>
+                )}
               </CellPosition>
               {displayLanguages.map((lang) => {
-                // Prefer the server side snippet so a long value stays readable in the
-                // table, and fall back to the complete value when this language had no
-                // match of its own.
-                const highlight = item.highlights?.[lang]
-                const value = highlight ?? item.values[lang]
                 const label = languageMap[lang as keyof typeof languageMap]
                 return (
                   <CellLang key={lang} data-label={label}>
-                    <div>
-                      {value
-                        ? highlightText(value, keyword, highlight !== undefined)
-                        : ''}
-                    </div>
+                    <div>{renderCell(item, lang, keyword, isExpanded)}</div>
                   </CellLang>
                 )
               })}
