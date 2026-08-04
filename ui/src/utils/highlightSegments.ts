@@ -244,3 +244,58 @@ export function resolveHighlightSegments(
 
   return markLiteralQuery(mergeAdjacent(tokens), query)
 }
+
+/**
+ * Collects the words the server wrapped in <mark> inside a fragment.
+ *
+ * These are the words its analyzer decided were matches, already back in the form the
+ * text actually uses — stemming and bigrams happened on the way in, not on the way out.
+ * Using them as seeds is what lets the complete value be highlighted without the browser
+ * having to know anything about stemming or CJK segmentation.
+ */
+export function markedWords(fragment: string, escaped = false): string[] {
+  if (!fragment) return []
+
+  const decode = escaped ? unescapeHtmlEntities : (s: string) => s
+  const words = new Set<string>()
+
+  for (const match of fragment.matchAll(markRegex)) {
+    for (const word of decode(match[1]).match(wordRegex) ?? []) {
+      words.add(word.toLowerCase())
+    }
+  }
+
+  return [...words]
+}
+
+/**
+ * Splits a complete, unmarked value into runs, highlighting the given seed words and
+ * whatever the query says belongs beside them.
+ *
+ * Used when a row is expanded: `values` carries no marks of its own, so the seeds come
+ * from the fragment the server did mark.
+ */
+export function resolveExpandedSegments(
+  value: string,
+  query: string,
+  seeds: string[],
+): HighlightSegment[] {
+  if (!value) return []
+  if (seeds.length === 0) {
+    return markLiteralQuery([{ text: value, marked: false }], query)
+  }
+
+  const wanted = new Set(seeds.map((seed) => seed.toLowerCase()))
+  const tokens = tokenize({ text: value, marked: false })
+  for (const token of tokens) {
+    if (token.isWord && wanted.has(token.text.toLowerCase())) {
+      token.marked = true
+    }
+  }
+
+  if (query) {
+    expandMarks(tokens, query)
+  }
+
+  return mergeAdjacent(tokens)
+}

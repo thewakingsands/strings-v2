@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { resolveHighlightSegments } from './highlightSegments'
+import {
+  markedWords,
+  resolveExpandedSegments,
+  resolveHighlightSegments,
+} from './highlightSegments'
 
 /** The highlighted runs, in order. */
 function marked(text: string, query: string, escaped = false): string[] {
@@ -126,5 +130,111 @@ describe('resolveHighlightSegments', () => {
     expect(marked('<mark>hardliness</mark> we can', 'hardly we can')).toEqual([
       'hardliness',
     ])
+  })
+})
+
+describe('markedWords', () => {
+  it('collects the words the server marked', () => {
+    const fragment =
+      '…<mark>including</mark> <mark>without</mark> <mark>limitation</mark> the rights…'
+    expect(markedWords(fragment)).toEqual([
+      'including',
+      'without',
+      'limitation',
+    ])
+  })
+
+  it('lowercases and de-duplicates', () => {
+    expect(markedWords('<mark>Onion</mark> and <mark>onion</mark>')).toEqual([
+      'onion',
+    ])
+  })
+
+  it('decodes entities before splitting when escaped', () => {
+    // The server marked the word inside curly quotes it had escaped.
+    expect(markedWords('the &#34;<mark>Software</mark>&#34;', true)).toEqual([
+      'software',
+    ])
+  })
+
+  it('splits a multi word mark', () => {
+    expect(markedWords('<mark>wizard eggplant</mark>')).toEqual([
+      'wizard',
+      'eggplant',
+    ])
+  })
+
+  it('returns nothing for a fragment with no marks', () => {
+    expect(markedWords('Thavnairian onion, no marks here')).toEqual([])
+    expect(markedWords('')).toEqual([])
+  })
+})
+
+describe('resolveExpandedSegments', () => {
+  const seeds = ['including', 'without', 'limitation', 'rights']
+
+  it('highlights the seed words in the complete value', () => {
+    const value = 'text including without limitation the rights to use'
+    expect(
+      resolveExpandedSegments(
+        value,
+        'including without limitation the rights',
+        seeds,
+      )
+        .filter((s) => s.marked)
+        .map((s) => s.text),
+    ).toEqual(['including without limitation the rights'])
+  })
+
+  it('does not mark a seed that is only part of a longer word', () => {
+    // `the` must not light up inside `there`.
+    const marked = resolveExpandedSegments('there and then', 'the cat', ['the'])
+      .filter((s) => s.marked)
+      .map((s) => s.text)
+    expect(marked).toEqual([])
+  })
+
+  it('marks every occurrence, not just the first', () => {
+    const marked = resolveExpandedSegments(
+      'onion soup and onion pie',
+      'onion',
+      ['onion'],
+    )
+      .filter((s) => s.marked)
+      .map((s) => s.text)
+    expect(marked).toEqual(['onion', 'onion'])
+  })
+
+  it('pulls in a stop word the query puts between two seeds', () => {
+    // `to` is a stop word so the server never marked it, but the query has it between
+    // afford and lower.
+    const marked = resolveExpandedSegments(
+      'we can afford to lower our guard',
+      'afford to lower',
+      ['afford', 'lower'],
+    )
+      .filter((s) => s.marked)
+      .map((s) => s.text)
+    expect(marked).toEqual(['afford to lower'])
+  })
+
+  it('falls back to the literal query when there are no seeds', () => {
+    const marked = resolveExpandedSegments('a onion b', 'onion', [])
+      .filter((s) => s.marked)
+      .map((s) => s.text)
+    expect(marked).toEqual(['onion'])
+  })
+
+  it('rebuilds the value exactly', () => {
+    const value = 'text including without limitation the rights to use'
+    expect(
+      resolveExpandedSegments(value, 'including the rights', seeds)
+        .map((s) => s.text)
+        .join(''),
+    ).toBe(value)
+  })
+
+  it('handles an empty value', () => {
+    expect(resolveExpandedSegments('', 'onion', ['onion'])).toEqual([])
   })
 })
