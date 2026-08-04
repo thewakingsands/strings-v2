@@ -101,16 +101,15 @@ func TestParseSearchQueryBoostsByLanguageOrder(t *testing.T) {
 	langs := []string{"chs", "en", "ja"}
 	q := parseSearchQuery("onion", langs, "")
 
-	disjunction, ok := q.(*query.DisjunctionQuery)
+	disMax, ok := q.(*disMaxQuery)
 	if !ok {
-		t.Fatalf("query type = %T, want *query.DisjunctionQuery", q)
+		t.Fatalf("query type = %T, want *disMaxQuery", q)
 	}
-	if len(disjunction.Disjuncts) != len(langs) {
-		t.Fatalf("got %d disjuncts, want %d", len(disjunction.Disjuncts), len(langs))
+	if len(disMax.disjuncts) != len(langs) {
+		t.Fatalf("got %d disjuncts, want %d", len(disMax.disjuncts), len(langs))
 	}
 
-	wantBoosts := []float64{3, 2, 1}
-	for i, disjunct := range disjunction.Disjuncts {
+	for i, disjunct := range disMax.disjuncts {
 		matchQuery, ok := disjunct.(*query.MatchQuery)
 		if !ok {
 			t.Fatalf("disjunct %d type = %T, want *query.MatchQuery", i, disjunct)
@@ -118,11 +117,26 @@ func TestParseSearchQueryBoostsByLanguageOrder(t *testing.T) {
 		if matchQuery.FieldVal != langs[i] {
 			t.Errorf("disjunct %d field = %q, want %q", i, matchQuery.FieldVal, langs[i])
 		}
-		if matchQuery.BoostVal == nil {
-			t.Fatalf("disjunct %d boost is unset, want %v", i, wantBoosts[i])
+
+		if i == 0 {
+			if matchQuery.BoostVal != nil {
+				t.Errorf("first language boost = %v, want unset so one language scores unchanged",
+					*matchQuery.BoostVal)
+			}
+			continue
 		}
-		if got := float64(*matchQuery.BoostVal); got != wantBoosts[i] {
-			t.Errorf("disjunct %d boost = %v, want %v", i, got, wantBoosts[i])
+		if matchQuery.BoostVal == nil {
+			t.Fatalf("disjunct %d boost is unset", i)
+		}
+
+		got := float64(*matchQuery.BoostVal)
+		if want := 1 - float64(i)*languageBoostStep; got != want {
+			t.Errorf("disjunct %d boost = %v, want %v", i, got, want)
+		}
+		// dis_max multiplies the boost into the winning clause, so anything but a small
+		// nudge would let a weak match in an earlier language beat a strong later one.
+		if got <= 0.9 || got >= 1 {
+			t.Errorf("disjunct %d boost = %v, want a gentle tie-breaker just under 1", i, got)
 		}
 	}
 }
@@ -134,7 +148,7 @@ func TestParseSearchQueryAddsSheetFilter(t *testing.T) {
 		wantTextQuery any
 	}{
 		{name: "single language", langs: []string{"en"}, wantTextQuery: &query.MatchQuery{}},
-		{name: "multiple languages", langs: []string{"chs", "en"}, wantTextQuery: &query.DisjunctionQuery{}},
+		{name: "multiple languages", langs: []string{"chs", "en"}, wantTextQuery: &disMaxQuery{}},
 	}
 
 	for _, tc := range cases {
@@ -171,8 +185,8 @@ func sameQueryType(got, want any) bool {
 	case *query.MatchQuery:
 		_, ok := got.(*query.MatchQuery)
 		return ok
-	case *query.DisjunctionQuery:
-		_, ok := got.(*query.DisjunctionQuery)
+	case *disMaxQuery:
+		_, ok := got.(*disMaxQuery)
 		return ok
 	}
 	return false

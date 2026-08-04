@@ -41,18 +41,23 @@ func LoadStore(dataDir string, indexDir string) (*Store, error) {
 
 var metaFields = []string{"sheet", "id", "index"}
 
+// languageBoostStep separates consecutive languages in the lang parameter. It is
+// deliberately tiny: dis_max multiplies it into the winning clause's score, so a large
+// factor would let a poor match in an earlier language beat a perfect match in a later
+// one. This only settles the order when the languages score about the same.
+const languageBoostStep = 0.01
+
 // parseSearchQuery matches q against every language in langs, ranking earlier
-// languages above later ones.
+// languages above later ones when they are otherwise equally good.
 func parseSearchQuery(q string, langs []string, sheet string) query.Query {
 	disjuncts := make([]query.Query, 0, len(langs))
 	for i, lang := range langs {
 		matchQuery := bleve.NewMatchQuery(q)
 		matchQuery.SetField(lang)
-		// Position in langs is the caller's preference order, so langs=chs,en,ja means
-		// chs^3 en^2 ja^1. A single language is left unboosted so that its scores stay
-		// bit for bit identical to a search that never knew about multiple languages.
-		if len(langs) > 1 {
-			matchQuery.SetBoost(float64(len(langs) - i))
+		// The first language is left alone, which keeps a single language search scoring
+		// bit for bit as it did before this parameter accepted a list.
+		if i > 0 {
+			matchQuery.SetBoost(1 - float64(i)*languageBoostStep)
 		}
 		disjuncts = append(disjuncts, matchQuery)
 	}
@@ -61,7 +66,7 @@ func parseSearchQuery(q string, langs []string, sheet string) query.Query {
 	if len(disjuncts) == 1 {
 		textQuery = disjuncts[0]
 	} else {
-		textQuery = bleve.NewDisjunctionQuery(disjuncts...)
+		textQuery = newDisMaxQuery(disjuncts)
 	}
 
 	if sheet == "" {
