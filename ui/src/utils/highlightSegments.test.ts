@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  isFragmentTruncated,
   markedWords,
   resolveExpandedSegments,
   resolveHighlightSegments,
@@ -236,5 +237,45 @@ describe('resolveExpandedSegments', () => {
 
   it('handles an empty value', () => {
     expect(resolveExpandedSegments('', 'onion', ['onion'])).toEqual([])
+  })
+})
+
+describe('isFragmentTruncated', () => {
+  it('is false when the fragment is the whole value', () => {
+    expect(
+      isFragmentTruncated('To be continued...', 'To be continued...'),
+    ).toBe(false)
+  })
+
+  it('is false once the mark tags are discounted', () => {
+    expect(isFragmentTruncated('<mark>onion</mark> soup', 'onion soup')).toBe(
+      false,
+    )
+  })
+
+  it('is false once the entities are decoded', () => {
+    // Left escaped, this fragment measures longer than the raw value it came from, which
+    // would read as "not truncated" for the wrong reason.
+    expect(
+      isFragmentTruncated(
+        'the <mark>wives</mark>&#39; tale',
+        "the wives' tale",
+      ),
+    ).toBe(false)
+  })
+
+  it('is true when the fragment covers only part of the value', () => {
+    const value = 'a'.repeat(500)
+    expect(isFragmentTruncated(`…${'a'.repeat(200)}…`, value)).toBe(true)
+  })
+
+  it('is not fooled by an ellipsis inside the text itself', () => {
+    // Chinese punctuation, not the fragmenter's separator.
+    expect(isFragmentTruncated('……大人？！', '……大人？！')).toBe(false)
+  })
+
+  it('is false for an empty fragment or value', () => {
+    expect(isFragmentTruncated('', 'onion')).toBe(false)
+    expect(isFragmentTruncated('onion', '')).toBe(false)
   })
 })

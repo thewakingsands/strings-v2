@@ -246,6 +246,26 @@ export function resolveHighlightSegments(
 }
 
 /**
+ * Reports whether a fragment leaves part of its value out of sight.
+ *
+ * Compares lengths rather than looking for the ellipsis the fragmenter adds, because the
+ * game text uses … of its own: a line reading "……大人？！" is its own fragment, not a
+ * truncated one. For the same reason the ellipses are left in the count — there is no
+ * telling the fragmenter's apart from the text's, and including them only understates the
+ * difference by a character or two, which no row is going to hinge on.
+ *
+ * The tags do come off and the entities are decoded, otherwise an escaped fragment
+ * measures longer than the raw value it came from and nothing would ever look truncated.
+ */
+export function isFragmentTruncated(fragment: string, value: string): boolean {
+  if (!fragment || !value) return false
+
+  const plain = unescapeHtmlEntities(fragment.replace(markRegex, '$1'))
+
+  return plain.length < value.length
+}
+
+/**
  * Collects the words the server wrapped in <mark> inside a fragment.
  *
  * These are the words its analyzer decided were matches, already back in the form the

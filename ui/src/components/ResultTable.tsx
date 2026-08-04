@@ -3,7 +3,11 @@ import styled from '@emotion/styled'
 import { type ReactNode, useState } from 'react'
 import type { StringItem } from '@/search/interface'
 import { highlightText } from '@/utils/highlight'
-import { markedWords, resolveExpandedSegments } from '@/utils/highlightSegments'
+import {
+  isFragmentTruncated,
+  markedWords,
+  resolveExpandedSegments,
+} from '@/utils/highlightSegments'
 import { languageMap } from '@/utils/language'
 import { useScrollIntoView } from '../utils/useScrollIntoView'
 
@@ -259,9 +263,14 @@ export function ResultTable(props: IResultTableProps) {
             item.sheet === props.highlightItem?.sheet &&
             item.rowId === props.highlightItem?.rowId
           const rowKey = `${item.sheet}#${item.rowId}`
-          // Only rows whose values were trimmed have anything to reveal. Items from
-          // /api/items carry no highlights and are already shown in full.
-          const canExpand = item.highlights !== undefined
+          // Only offer the toggle where something is actually out of sight. A short value
+          // is its own fragment, and an /api/items row has no fragment at all.
+          const canExpand = displayLanguages.some((lang) =>
+            isFragmentTruncated(
+              item.highlights?.[lang] ?? '',
+              item.values[lang] ?? '',
+            ),
+          )
           const isExpanded = canExpand && expanded.has(rowKey)
           return (
             <ItemRow
