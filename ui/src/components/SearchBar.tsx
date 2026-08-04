@@ -1,8 +1,12 @@
-import { Button } from '@blueprintjs/core'
-import { MultiSelect, Select } from '@blueprintjs/select'
+import { Button, MenuItem, Tag } from '@blueprintjs/core'
+import { MultiSelect } from '@blueprintjs/select'
 import { css } from '@emotion/react'
 import styled from '@emotion/styled'
-import { type LanguageOption, languageOptions } from '@/utils/language'
+import {
+  formatQueryLanguagesLabel,
+  type LanguageOption,
+  languageOptions,
+} from '@/utils/language'
 import type { ISearchQuery } from '../search/useSearch'
 import { type ISearchFieldProps, SearchField } from './SearchField'
 
@@ -43,34 +47,48 @@ const fullWidth = css({
 export interface ISearchBarProps extends ISearchFieldProps {
   previousQuery?: ISearchQuery
   onBackClicked?: () => void
-  language: string
-  onLanguageChange: (language: string) => void
+  queryLanguages: string[]
+  onQueryLanguagesChange: (queryLanguages: string[]) => void
   displayLanguages: string[]
   onDisplayLanguagesChange: (displayLanguages: string[]) => void
 }
 
+interface ItemRendererProps {
+  handleClick: React.MouseEventHandler<HTMLElement>
+  modifiers: { active: boolean }
+}
+
 const renderLanguageItem = (
-  item: LanguageOption,
-  {
-    handleClick,
-    modifiers,
-  }: {
-    handleClick: React.MouseEventHandler<HTMLElement>
-    modifiers: { active: boolean }
-  },
-) => (
-  <div
-    key={item.value}
-    onClick={handleClick}
-    style={{
-      padding: '8px',
-      cursor: 'pointer',
-      backgroundColor: modifiers.active ? '#e5e5e5' : 'transparent',
-    }}
-  >
-    {item.label}
-  </div>
-)
+  selected: string[],
+  { showRank }: { showRank?: boolean } = {},
+) =>
+  function renderItem(
+    item: LanguageOption,
+    { handleClick, modifiers }: ItemRendererProps,
+  ) {
+    const rank = selected.indexOf(item.value)
+    return (
+      <MenuItem
+        key={item.value}
+        onClick={handleClick}
+        active={modifiers.active}
+        selected={rank !== -1}
+        // MenuItem closes the popover on click by default, which would end the
+        // selection after every single pick.
+        shouldDismissPopover={false}
+        text={item.label}
+        // Query languages carry a priority, so the menu shows each pick's rank.
+        labelElement={
+          showRank && rank !== -1 ? (
+            <Tag minimal round>
+              {rank + 1}
+            </Tag>
+          ) : undefined
+        }
+        roleStructure="listoption"
+      />
+    )
+  }
 
 const filterLanguage = (query: string, item: LanguageOption): boolean => {
   const normalizedQuery = query.toLowerCase()
@@ -103,7 +121,7 @@ function DisplayLanguagesSelect({
         selectedItems={languageOptions.filter((opt) =>
           value.includes(opt.value),
         )}
-        itemRenderer={renderLanguageItem}
+        itemRenderer={renderLanguageItem(value)}
         itemPredicate={filterLanguage}
         onItemSelect={(item: LanguageOption) => {
           if (!value.includes(item.value)) {
@@ -128,29 +146,50 @@ function QueryLanguageSelect({
   value,
   onChange,
 }: {
-  value: string
-  onChange: (value: string) => void
+  value: string[]
+  onChange: (value: string[]) => void
 }) {
+  // Order is the priority the server boosts by, so keep the click order instead of
+  // normalising like DisplayLanguagesSelect does.
+  const selectedItems = value.flatMap(
+    (lang) => languageOptions.find((opt) => opt.value === lang) ?? [],
+  )
+
+  const remove = (lang: string) => {
+    // The server requires at least one language and answers 400 without it.
+    if (value.length < 2) return
+    onChange(value.filter((selected) => selected !== lang))
+  }
+
   return (
     <SelectContainer>
-      <Select<LanguageOption>
+      <MultiSelect<LanguageOption>
+        customTarget={(items) => (
+          <Button
+            size="large"
+            tabIndex={0}
+            text={formatQueryLanguagesLabel(items.map((item) => item.value))}
+            css={fullWidth}
+            endIcon="caret-down"
+          />
+        )}
         items={languageOptions}
-        itemRenderer={renderLanguageItem}
+        selectedItems={selectedItems}
+        itemRenderer={renderLanguageItem(value, { showRank: true })}
         itemPredicate={filterLanguage}
-        onItemSelect={(item: LanguageOption) => onChange(item.value)}
-        filterable={false}
-        popoverProps={{ placement: 'bottom-start' }}
-      >
-        <Button
-          size="large"
-          text={
-            languageOptions.find((opt) => opt.value === value)?.label ||
-            '选择查询语言'
+        onItemSelect={(item: LanguageOption) => {
+          if (value.includes(item.value)) {
+            remove(item.value)
+          } else {
+            // Appending keeps earlier picks at the higher priority.
+            onChange([...value, item.value])
           }
-          css={fullWidth}
-          endIcon="caret-down"
-        />
-      </Select>
+        }}
+        tagRenderer={(item: LanguageOption) => item.label}
+        onRemove={(item: LanguageOption) => remove(item.value)}
+        popoverProps={{ placement: 'bottom-start' }}
+        placeholder="选择查询语言"
+      />
     </SelectContainer>
   )
 }
@@ -175,8 +214,8 @@ export function SearchBar(props: ISearchBarProps) {
         {!previousQuery && (
           <>
             <QueryLanguageSelect
-              value={props.language}
-              onChange={props.onLanguageChange}
+              value={props.queryLanguages}
+              onChange={props.onQueryLanguagesChange}
             />
             <SearchInputContainer>
               <SearchField {...props} />

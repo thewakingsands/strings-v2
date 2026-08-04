@@ -29,7 +29,8 @@ function processQuery(searchParams: URLSearchParams, q: string) {
 
 export async function searchApi(
   params: {
-    lang: string
+    /** Ordered by decreasing priority; sent as a comma separated lang parameter. */
+    langs: string[]
     q: string
     offset?: number
     limit?: number
@@ -38,7 +39,7 @@ export async function searchApi(
   signal?: AbortSignal,
 ): Promise<ApiResponse<StringItem[]>> {
   const searchParams = new URLSearchParams()
-  searchParams.set('lang', params.lang)
+  searchParams.set('lang', params.langs.join(','))
   processQuery(searchParams, params.q)
 
   if (params.offset !== undefined) {

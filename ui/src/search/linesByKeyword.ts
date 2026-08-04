@@ -5,22 +5,22 @@ export interface IKeywordProps {
   keyword: string
   pageSize: number
   page: number
-  language: string
+  /** Ordered by decreasing priority: the server boosts earlier languages higher. */
+  languages: string[]
   displayLanguages?: string[]
 }
 
 export async function linesByKeyword(
-  { keyword, pageSize, page, language, displayLanguages }: IKeywordProps,
+  { keyword, pageSize, page, languages, displayLanguages }: IKeywordProps,
   signal?: AbortSignal,
 ): Promise<SearchResult> {
-  if (!keyword) {
+  if (!keyword || languages.length === 0) {
     return emptySearchResult
   }
 
-  // Search in the selected language only
   const response = await searchApi(
     {
-      lang: language,
+      langs: languages,
       q: keyword,
       offset: (page - 1) * pageSize,
       limit: pageSize,

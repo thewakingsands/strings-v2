@@ -11,7 +11,11 @@ import { SearchResult } from './components/SearchResult'
 import { TopNav } from './components/TopNav'
 import type { StringItem } from './search/interface'
 import { type ISearchQuery, useSearch } from './search/useSearch'
-import { defaultDisplayLanguages, defaultLanguage } from './utils/language'
+import {
+  defaultDisplayLanguages,
+  defaultQueryLanguages,
+  sortToDisplayOrder,
+} from './utils/language'
 
 const MarginedDiv = styled.div({
   marginBottom: 12,
@@ -33,7 +37,9 @@ const StickyContainer = styled.div({
 
 export default function App() {
   const [keywordInput, setKeywordInput] = useState('')
-  const [language, setLanguage] = useState(defaultLanguage)
+  const [queryLanguages, setQueryLanguages] = useState<string[]>([
+    ...defaultQueryLanguages,
+  ])
   const [displayLanguages, setDisplayLanguages] = useState<string[]>([
     ...defaultDisplayLanguages,
   ])
@@ -57,15 +63,40 @@ export default function App() {
         keyword,
         page: 1,
         pageSize: PAGE_SIZE,
-        language,
+        languages: queryLanguages,
         displayLanguages,
       },
     }
     debouncedSetSearch(query as ISearchQuery)
   }
 
-  const handleLanguageChange = (newLanguage: string) => {
-    setLanguage(newLanguage)
+  const handleQueryLanguagesChange = (newQueryLanguages: string[]) => {
+    setQueryLanguages(newQueryLanguages)
+
+    // A searched language that is not displayed comes back without its highlight,
+    // so make sure every one of them has a column. Dropping a query language leaves
+    // the column alone: removing it would take away something asked to be shown.
+    const missing = newQueryLanguages.filter(
+      (lang) => !displayLanguages.includes(lang),
+    )
+    let newDisplayLanguages = displayLanguages
+    if (missing.length) {
+      newDisplayLanguages = sortToDisplayOrder([
+        ...displayLanguages,
+        ...missing,
+      ])
+      setDisplayLanguages(newDisplayLanguages)
+      // Keep an open file view in sync with the columns that just appeared.
+      if (search.query?.file) {
+        search.setSearch({
+          file: {
+            ...search.query.file,
+            displayLanguages: newDisplayLanguages,
+          },
+        })
+      }
+    }
+
     // Trigger new search if there's a keyword
     if (keywordInput) {
       const query: ISearchQuery = {
@@ -73,8 +104,8 @@ export default function App() {
           keyword: keywordInput,
           page: 1,
           pageSize: PAGE_SIZE,
-          language: newLanguage,
-          displayLanguages,
+          languages: newQueryLanguages,
+          displayLanguages: newDisplayLanguages,
         },
       }
       search.setSearch(query)
@@ -90,7 +121,7 @@ export default function App() {
           keyword: keywordInput,
           page: 1,
           pageSize: PAGE_SIZE,
-          language,
+          languages: queryLanguages,
           displayLanguages: newDisplayLanguages,
         },
       }
@@ -131,8 +162,8 @@ export default function App() {
       search.setSearch(previousQuery)
       setPreviousQuery(null)
       setKeywordInput(previousQuery.keyword?.keyword || '')
-      if (previousQuery.keyword?.language) {
-        setLanguage(previousQuery.keyword.language)
+      if (previousQuery.keyword?.languages?.length) {
+        setQueryLanguages(previousQuery.keyword.languages)
       }
       if (previousQuery.keyword?.displayLanguages) {
         setDisplayLanguages(previousQuery.keyword.displayLanguages)
@@ -166,8 +197,8 @@ export default function App() {
                 keyword={keywordInput}
                 onKeywordChange={handleKeywordInputUpdate}
                 onBackClicked={handleBackClick}
-                language={language}
-                onLanguageChange={handleLanguageChange}
+                queryLanguages={queryLanguages}
+                onQueryLanguagesChange={handleQueryLanguagesChange}
                 displayLanguages={displayLanguages}
                 onDisplayLanguagesChange={handleDisplayLanguagesChange}
               />
