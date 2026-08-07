@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, multi]
   pull_request:
     branches: [main]
 
@@ -14,7 +14,7 @@ jobs:
   docker:
     name: Build Docker Image
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push'
     
     # Sets the permissions granted to the `GITHUB_TOKEN` for the actions in this job.
     permissions:
@@ -47,8 +47,10 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            latest-amd64
-            ${{ steps.datetime.outputs.DATETIME }}-amd64
+            type=raw,value=latest-amd64,enable={{is_default_branch}}
+            type=raw,value=${{ steps.datetime.outputs.DATETIME }}-amd64,enable={{is_default_branch}}
+            type=ref,event=branch,suffix=-amd64
+            type=ref,event=branch,suffix=-${{ steps.datetime.outputs.DATETIME }}-amd64
             type=sha
 
       - name: Build and push Docker image
