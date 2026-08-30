@@ -1,6 +1,6 @@
 import { Spinner } from '@blueprintjs/core'
 import styled from '@emotion/styled'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useDebouncedCallback } from 'use-debounce'
 import { Footer } from './components/Footer'
 import { MainContainer } from './components/MainContainer'
@@ -12,9 +12,11 @@ import { TopNav } from './components/TopNav'
 import type { StringItem } from './search/interface'
 import { type ISearchQuery, useSearch } from './search/useSearch'
 import {
-  defaultDisplayLanguages,
-  defaultQueryLanguages,
+  readStoredDisplayLanguages,
+  readStoredQueryLanguages,
   sortToDisplayOrder,
+  writeStoredDisplayLanguages,
+  writeStoredQueryLanguages,
 } from './utils/language'
 
 const MarginedDiv = styled.div({
@@ -38,14 +40,35 @@ const StickyContainer = styled.div({
 export default function App() {
   const [keywordInput, setKeywordInput] = useState('')
   const [advanced, setAdvanced] = useState(false)
-  const [queryLanguages, setQueryLanguages] = useState<string[]>([
-    ...defaultQueryLanguages,
-  ])
-  const [displayLanguages, setDisplayLanguages] = useState<string[]>([
-    ...defaultDisplayLanguages,
-  ])
+  const [queryLanguages, setQueryLanguages] = useState<string[]>(
+    readStoredQueryLanguages,
+  )
+  const [displayLanguages, setDisplayLanguages] = useState<string[]>(
+    readStoredDisplayLanguages,
+  )
   const [highlightItem, setHighlightItem] = useState<StringItem | null>(null)
   const [previousQuery, setPreviousQuery] = useState<ISearchQuery | null>(null)
+
+  // Storing only what the visitor actually changed, never what they were given, keeps
+  // anyone who has not touched the pickers on the defaults — so a later change to those
+  // defaults still reaches them instead of being shadowed by a copy written on a first
+  // visit. Both languages are written together because picking a query language can
+  // add a display column in the same update.
+  const openedWith = useRef({
+    query: queryLanguages,
+    display: displayLanguages,
+  })
+  useEffect(() => {
+    const initial = openedWith.current
+    if (
+      queryLanguages === initial.query &&
+      displayLanguages === initial.display
+    ) {
+      return
+    }
+    writeStoredQueryLanguages(queryLanguages)
+    writeStoredDisplayLanguages(displayLanguages)
+  }, [queryLanguages, displayLanguages])
 
   const search = useSearch(undefined)
 
