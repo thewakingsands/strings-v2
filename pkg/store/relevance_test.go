@@ -180,8 +180,8 @@ var relevanceCases = []relevanceCase{
 
 var relevanceFields = []string{"chs", "tc", "en", "ja"}
 
-// pinnedDataDir finds the data tree to read, mirroring eval/corpus.py so that one
-// EVAL_DATA configures both halves of the eval set.
+// pinnedDataDir finds the data tree to read, resolving it the same way the external
+// relevance eval harness does, so that one EVAL_DATA configures both.
 //
 // The fallback matters more than it looks. data/ is gitignored and runs to gigabytes,
 // so it is never copied into a worktree, and a worktree is exactly where ranking gets
