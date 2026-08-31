@@ -10,44 +10,17 @@ import {
 } from '@/utils/highlightSegments'
 import { languageMap } from '@/utils/language'
 import { useScrollIntoView } from '../utils/useScrollIntoView'
-
-const MOBILE_BREAKPOINT = 768
+import { MOBILE_BREAKPOINT } from './breakpoints'
+import {
+  type IResultTableHeaderProps,
+  ResultTableHeader,
+} from './ResultTableHeader'
 
 const ListContainer = styled.div({
   width: '100%',
   minWidth: 0,
   display: 'flex',
   flexDirection: 'column',
-})
-
-const HeaderRow = styled.div({
-  display: 'flex',
-  flexDirection: 'row',
-  borderBottom: '2px solid #e1e8ed',
-  backgroundColor: '#f7f9fa',
-  fontWeight: 600,
-  fontSize: 12,
-  color: '#5c7080',
-  [`@media (max-width: ${MOBILE_BREAKPOINT - 1}px)`]: {
-    display: 'none',
-  },
-})
-
-const HeaderCellPosition = styled.div({
-  flex: '0 0 120px',
-  minWidth: 0,
-  padding: '10px 12px',
-  borderRight: '1px solid #e1e8ed',
-})
-
-const HeaderCellLang = styled.div({
-  flex: 1,
-  minWidth: 0,
-  padding: '10px 12px',
-  borderRight: '1px solid #e1e8ed',
-  '&:last-of-type': {
-    borderRight: 'none',
-  },
 })
 
 const ItemRow = styled.div<{ $highlight?: boolean }>(({ $highlight }) => ({
@@ -221,12 +194,11 @@ function renderCell(
   )
 }
 
-export interface IResultTableProps {
+export interface IResultTableProps extends IResultTableHeaderProps {
   items: StringItem[]
   onContextButtonClick?: (item: StringItem) => void
   keyword: string
   highlightItem?: Pick<StringItem, 'sheet' | 'rowId'>
-  displayLanguages: string[]
 }
 
 export function ResultTable(props: IResultTableProps) {
@@ -250,14 +222,12 @@ export function ResultTable(props: IResultTableProps) {
   return (
     <ScrollableContainer>
       <ListContainer>
-        <HeaderRow>
-          <HeaderCellPosition>位置</HeaderCellPosition>
-          {displayLanguages.map((lang) => (
-            <HeaderCellLang key={lang}>
-              {languageMap[lang as keyof typeof languageMap]}
-            </HeaderCellLang>
-          ))}
-        </HeaderRow>
+        <ResultTableHeader
+          displayLanguages={displayLanguages}
+          onHideLanguage={props.onHideLanguage}
+          onToggleLanguage={props.onToggleLanguage}
+          onReorderDisplayLanguages={props.onReorderDisplayLanguages}
+        />
         {items.map((item, idx) => {
           const isHighlight =
             item.sheet === props.highlightItem?.sheet &&

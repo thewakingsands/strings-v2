@@ -1,6 +1,6 @@
 import { Spinner } from '@blueprintjs/core'
 import styled from '@emotion/styled'
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import { useDebouncedCallback } from 'use-debounce'
 import { Footer } from './components/Footer'
 import { MainContainer } from './components/MainContainer'
@@ -12,12 +12,10 @@ import { TopNav } from './components/TopNav'
 import type { StringItem } from './search/interface'
 import { type ISearchQuery, useSearch } from './search/useSearch'
 import {
-  readStoredDisplayLanguages,
-  readStoredQueryLanguages,
-  sortToDisplayOrder,
-  writeStoredDisplayLanguages,
-  writeStoredQueryLanguages,
-} from './utils/language'
+  type LanguageChange,
+  reasonNeedsRefetch,
+  useLanguageSelection,
+} from './utils/useLanguageSelection'
 
 const MarginedDiv = styled.div({
   marginBottom: 12,
@@ -37,47 +35,48 @@ const StickyContainer = styled.div({
   zIndex: 20,
 })
 
+const PAGE_SIZE = 20
+
 export default function App() {
   const [keywordInput, setKeywordInput] = useState('')
   const [advanced, setAdvanced] = useState(false)
-  const [queryLanguages, setQueryLanguages] = useState<string[]>(
-    readStoredQueryLanguages,
-  )
-  const [displayLanguages, setDisplayLanguages] = useState<string[]>(
-    readStoredDisplayLanguages,
-  )
   const [highlightItem, setHighlightItem] = useState<StringItem | null>(null)
   const [previousQuery, setPreviousQuery] = useState<ISearchQuery | null>(null)
 
-  // Storing only what the visitor actually changed, never what they were given, keeps
-  // anyone who has not touched the pickers on the defaults — so a later change to those
-  // defaults still reaches them instead of being shadowed by a copy written on a first
-  // visit. Both languages are written together because picking a query language can
-  // add a display column in the same update.
-  const openedWith = useRef({
-    query: queryLanguages,
-    display: displayLanguages,
-  })
-  useEffect(() => {
-    const initial = openedWith.current
-    if (
-      queryLanguages === initial.query &&
-      displayLanguages === initial.display
-    ) {
-      return
-    }
-    writeStoredQueryLanguages(queryLanguages)
-    writeStoredDisplayLanguages(displayLanguages)
-  }, [queryLanguages, displayLanguages])
-
   const search = useSearch(undefined)
+
+  const handleLanguageChange = ({
+    queryLanguages,
+    displayLanguages,
+    reason,
+  }: LanguageChange) => {
+    if (!reasonNeedsRefetch(reason)) return
+    if (keywordInput) {
+      search.setSearch({
+        keyword: {
+          keyword: keywordInput,
+          page: 1,
+          pageSize: PAGE_SIZE,
+          languages: queryLanguages,
+          displayLanguages,
+          advanced,
+        },
+      })
+    }
+    if (search.query?.file) {
+      search.setSearch({
+        file: { ...search.query.file, displayLanguages },
+      })
+    }
+  }
+
+  const languages = useLanguageSelection({ onChange: handleLanguageChange })
+  const { queryLanguages, displayLanguages } = languages
 
   const debouncedSetSearch = useDebouncedCallback((q: ISearchQuery) => {
     setHighlightItem(null)
     search.setSearch(q)
   }, 400)
-
-  const PAGE_SIZE = 20
 
   const handleKeywordInputUpdate = (keyword: string) => {
     setKeywordInput(keyword)
@@ -93,76 +92,6 @@ export default function App() {
       },
     }
     debouncedSetSearch(query as ISearchQuery)
-  }
-
-  const handleQueryLanguagesChange = (newQueryLanguages: string[]) => {
-    setQueryLanguages(newQueryLanguages)
-
-    // A searched language that is not displayed comes back without its highlight,
-    // so make sure every one of them has a column. Dropping a query language leaves
-    // the column alone: removing it would take away something asked to be shown.
-    const missing = newQueryLanguages.filter(
-      (lang) => !displayLanguages.includes(lang),
-    )
-    let newDisplayLanguages = displayLanguages
-    if (missing.length) {
-      newDisplayLanguages = sortToDisplayOrder([
-        ...displayLanguages,
-        ...missing,
-      ])
-      setDisplayLanguages(newDisplayLanguages)
-      // Keep an open file view in sync with the columns that just appeared.
-      if (search.query?.file) {
-        search.setSearch({
-          file: {
-            ...search.query.file,
-            displayLanguages: newDisplayLanguages,
-          },
-        })
-      }
-    }
-
-    // Trigger new search if there's a keyword
-    if (keywordInput) {
-      const query: ISearchQuery = {
-        keyword: {
-          keyword: keywordInput,
-          page: 1,
-          pageSize: PAGE_SIZE,
-          languages: newQueryLanguages,
-          displayLanguages: newDisplayLanguages,
-          advanced,
-        },
-      }
-      search.setSearch(query)
-    }
-  }
-
-  const handleDisplayLanguagesChange = (newDisplayLanguages: string[]) => {
-    setDisplayLanguages(newDisplayLanguages)
-    // Trigger new search if there's a keyword
-    if (keywordInput) {
-      const query: ISearchQuery = {
-        keyword: {
-          keyword: keywordInput,
-          page: 1,
-          pageSize: PAGE_SIZE,
-          languages: queryLanguages,
-          displayLanguages: newDisplayLanguages,
-          advanced,
-        },
-      }
-      search.setSearch(query)
-    }
-    // Also update file view if active
-    if (search.query?.file) {
-      search.setSearch({
-        file: {
-          ...search.query.file,
-          displayLanguages: newDisplayLanguages,
-        },
-      })
-    }
   }
 
   const handleAdvancedChange = (newAdvanced: boolean) => {
@@ -207,12 +136,12 @@ export default function App() {
       setPreviousQuery(null)
       setKeywordInput(previousQuery.keyword?.keyword || '')
       setAdvanced(previousQuery.keyword?.advanced ?? false)
-      if (previousQuery.keyword?.languages?.length) {
-        setQueryLanguages(previousQuery.keyword.languages)
-      }
-      if (previousQuery.keyword?.displayLanguages) {
-        setDisplayLanguages(previousQuery.keyword.displayLanguages)
-      }
+      languages.restore({
+        queryLanguages: previousQuery.keyword?.languages?.length
+          ? previousQuery.keyword.languages
+          : undefined,
+        displayLanguages: previousQuery.keyword?.displayLanguages,
+      })
     }
   }
 
@@ -232,7 +161,10 @@ export default function App() {
 
   return (
     <>
-      <TopNav />
+      <TopNav
+        displayLanguages={displayLanguages}
+        onToggleDisplayLanguage={languages.toggleDisplayLanguage}
+      />
       <FillBodySection>
         <MainContainer>
           <StickyContainer>
@@ -245,9 +177,8 @@ export default function App() {
                 onAdvancedChange={handleAdvancedChange}
                 onBackClicked={handleBackClick}
                 queryLanguages={queryLanguages}
-                onQueryLanguagesChange={handleQueryLanguagesChange}
-                displayLanguages={displayLanguages}
-                onDisplayLanguagesChange={handleDisplayLanguagesChange}
+                onToggleQueryLanguage={languages.toggleQueryLanguage}
+                onReorderQueryLanguages={languages.reorderQueryLanguages}
               />
             </MarginedDiv>
           </StickyContainer>
@@ -260,6 +191,9 @@ export default function App() {
             ) : search.result ? (
               <SearchResult
                 displayLanguages={displayLanguages}
+                onHideLanguage={languages.hideLanguage}
+                onToggleLanguage={languages.toggleDisplayLanguage}
+                onReorderDisplayLanguages={languages.reorderDisplayLanguages}
                 keyword={search.query?.keyword?.keyword || ''}
                 advanced={search.query?.keyword?.advanced}
                 items={search.result.items}

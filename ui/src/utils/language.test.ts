@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   defaultDisplayLanguages,
   defaultQueryLanguages,
+  orderActiveFirst,
   readStoredDisplayLanguages,
   readStoredQueryLanguages,
   writeStoredDisplayLanguages,
@@ -139,6 +140,40 @@ describe('stored values that cannot be trusted', () => {
     // The display picker, unlike the query one, lets every language go.
     install(fakeStorage({ [displayKey]: JSON.stringify([]) }))
     expect(readStoredDisplayLanguages()).toEqual([])
+  })
+})
+
+describe('orderActiveFirst', () => {
+  const all = ['chs', 'tc', 'en', 'ja', 'ko']
+
+  it('puts the active codes first, keeping the order they came in', () => {
+    expect(orderActiveFirst(['ja', 'chs'], all)).toEqual([
+      'ja',
+      'chs',
+      'tc',
+      'en',
+      'ko',
+    ])
+  })
+
+  it('leaves the fixed order alone when nothing is active', () => {
+    expect(orderActiveFirst([], all)).toEqual(all)
+  })
+
+  it('returns the active order unchanged when everything is active', () => {
+    const active = ['ko', 'en', 'ja', 'tc', 'chs']
+    expect(orderActiveFirst(active, all)).toEqual(active)
+  })
+
+  it('drops an active code the app does not have', () => {
+    // The active list can come from storage, which may name a language since removed.
+    expect(orderActiveFirst(['klingon', 'en'], all)).toEqual([
+      'en',
+      'chs',
+      'tc',
+      'ja',
+      'ko',
+    ])
   })
 })
 

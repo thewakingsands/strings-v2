@@ -23,19 +23,14 @@ export const languageOptions: LanguageOption[] = Object.entries(
 export const defaultQueryLanguages = ['chs']
 export const defaultDisplayLanguages = ['chs', 'tc', 'en', 'ja'] as const
 
-export function formatQueryLanguagesLabel(languages: string[]): string {
-  if (languages.length === 0) return '选择查询语言'
-  if (languages.length === 1) {
-    const lang = languages[0]
-    return languageMap[lang as keyof typeof languageMap] ?? lang
-  }
-  return `搜索语言 (${languages.length})`
-}
-
-/** Sorts to the fixed languageMap order, for display columns where order is not a preference. */
-export function sortToDisplayOrder(languages: string[]): string[] {
-  const order = languageOptions.map((option) => option.value)
-  return order.filter((lang) => languages.includes(lang))
+/**
+ * The chips rows and the display language menu all list the picked languages first, in whatever
+ * order that group carries — priority for the query languages, column order for the display ones —
+ * and everything else after them in the fixed languageMap order.
+ */
+export function orderActiveFirst(active: string[], all: string[]): string[] {
+  const known = active.filter((lang) => all.includes(lang))
+  return [...known, ...all.filter((lang) => !known.includes(lang))]
 }
 
 // The page shares its origin with a third party analytics script that keeps its own
