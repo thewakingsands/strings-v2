@@ -32,6 +32,8 @@ export async function searchApi(
     /** Ordered by decreasing priority; sent as a comma separated lang parameter. */
     langs: string[]
     q: string
+    /** Reads q as a bleve query string instead of plain words. */
+    advanced?: boolean
     offset?: number
     limit?: number
     fields?: string[]
@@ -41,6 +43,9 @@ export async function searchApi(
   const searchParams = new URLSearchParams()
   searchParams.set('lang', params.langs.join(','))
   processQuery(searchParams, params.q)
+  if (params.advanced) {
+    searchParams.set('mode', 'advanced')
+  }
 
   if (params.offset !== undefined) {
     searchParams.set('offset', params.offset.toString())

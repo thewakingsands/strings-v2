@@ -110,10 +110,10 @@ Each JSON file under the strings directory contains an array of items:
 
 - Search strings
   - Endpoint: `GET /api/search`
-  - Query parameters: `lang` required, `q` required, `sheet` optional, `fields` optional, `offset` optional, `limit` optional
+  - Query parameters: `lang` required, `q` required, `sheet` optional, `fields` optional, `offset` optional, `limit` optional, `mode` optional
   - Response: JSON with matching items and meta fields such as `total` and `elapsed`
-  - See [Searching several languages at once](#searching-several-languages-at-once) and
-    [Values and highlights](#values-and-highlights)
+  - See [Searching several languages at once](#searching-several-languages-at-once),
+    [Advanced queries](#advanced-queries) and [Values and highlights](#values-and-highlights)
 
 - Get items by sheet
   - Endpoint: `GET /api/items`
@@ -150,6 +150,29 @@ Supported codes are `chs`, `tc`, `en`, `de`, `fr`, `ja`, `ko`.
 `fields` chooses which language columns come back and defaults to `chs,tc,en,ja`. It is
 independent of `lang`: searching a language that `fields` leaves out is allowed, and
 that language is simply absent from the response.
+
+### Advanced queries
+
+`mode=advanced` reads `q` as a [bleve query string](https://blevesearch.com/docs/Query-String-Query/)
+instead of plain words:
+
+```bash
+curl -G "http://127.0.0.1:8080/api/search" --data-urlencode "lang=chs,en" \
+  --data-urlencode "mode=advanced" --data-urlencode "q=*鲈* -sheet:Addon"
+```
+
+- A clause without a field, such as `*鲈*` or `-onion`, is searched in every `lang`,
+  weighted by their order like a plain search. `+a +b` needs each of them in some
+  language, not both in the same one, and `-a` drops a row that has `a` in any of them.
+- A clause with a field, such as `en:onion` or `sheet:Item`, searches only that field,
+  which may be a language outside `lang`.
+- Wildcards and regular expressions match single index terms. The CJK columns are
+  indexed as pairs of characters, which is why the plain search cannot find a single
+  character like `鲈` and `*鲈*` can; it is also why its highlight covers the pairs
+  `*鲈*` matched, not the character alone.
+- A query that does not parse is rejected with `400 invalid query: ...`, and an unknown
+  `mode` with `400 invalid mode: ...`. Leaving `mode` out, or `mode=simple`, is the plain
+  search.
 
 ### Values and highlights
 

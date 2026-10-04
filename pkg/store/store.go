@@ -3,6 +3,7 @@ package store
 import (
 	"fmt"
 	"log"
+	"slices"
 	"time"
 	"unicode"
 
@@ -106,16 +107,9 @@ func parseSearchQuery(q string, langs []string, sheet string) query.Query {
 		matchQuery := bleve.NewMatchQuery(q)
 		matchQuery.SetField(lang)
 
-		boost := 1.0
-		if i > 0 {
-			boost = 1 - float64(i)*languageBoostStep
-		}
-		if nonLatin && !usesCJKAnalyzer(lang) {
-			boost *= nonNativeScriptBoost
-		}
 		// Left alone at exactly 1, which keeps a single language Latin search scoring
 		// bit for bit as it did before this parameter accepted a list.
-		if boost != 1 {
+		if boost := languageBoost(i, lang, nonLatin); boost != 1 {
 			matchQuery.SetBoost(boost)
 		}
 
@@ -140,6 +134,18 @@ func parseSearchQuery(q string, langs []string, sheet string) query.Query {
 		textQuery,
 		sheetQuery,
 	)
+}
+
+// languageBoost weights the clause searching lang, the i-th language asked for.
+func languageBoost(i int, lang string, nonLatin bool) float64 {
+	boost := 1.0
+	if i > 0 {
+		boost = 1 - float64(i)*languageBoostStep
+	}
+	if nonLatin && !usesCJKAnalyzer(lang) {
+		boost *= nonNativeScriptBoost
+	}
+	return boost
 }
 
 // isNonLatinQuery reports whether the query has letters and none of them are Latin.
@@ -172,8 +178,41 @@ func (s *Store) Search(q string, langs []string, sheet string, offset, limit int
 		return nil, fmt.Errorf("no search language given")
 	}
 
-	query := parseSearchQuery(q, langs, sheet)
+	return s.search(parseSearchQuery(q, langs, sheet), q, langs, offset, limit, fields, false)
+}
 
+// AdvancedSearch is Search with q read as a query string; see parseAdvancedQuery for
+// the syntax. A query that does not parse is reported as an *InvalidQueryError.
+func (s *Store) AdvancedSearch(q string, langs []string, sheet string, offset, limit int, fields []string) (*SearchResult, error) {
+	if s.index == nil {
+		return nil, fmt.Errorf("index is not loaded")
+	}
+	if len(langs) == 0 {
+		return nil, fmt.Errorf("no search language given")
+	}
+
+	query, err := parseAdvancedQuery(q, langs, sheet)
+	if err != nil {
+		return nil, &InvalidQueryError{err: err}
+	}
+
+	return s.search(query, q, langs, offset, limit, fields, true)
+}
+
+// InvalidQueryError is a query the caller got wrong, as opposed to a search that failed.
+type InvalidQueryError struct {
+	err error
+}
+
+func (e *InvalidQueryError) Error() string { return e.err.Error() }
+func (e *InvalidQueryError) Unwrap() error { return e.err }
+
+// search runs query, matching q in langs.
+//
+// With highlightAll, bleve highlights every field asked for, instead of only langs. An
+// advanced query can name fields outside langs, and its text is syntax rather than
+// words, so it cannot be analyzed by hand the way addDisplayFragments does.
+func (s *Store) search(query query.Query, q string, langs []string, offset, limit int, fields []string, highlightAll bool) (*SearchResult, error) {
 	searchFields := make([]string, 0, len(fields)+len(metaFields))
 	searchFields = append(searchFields, metaFields...)
 	searchFields = append(searchFields, fields...)
@@ -182,9 +221,15 @@ func (s *Store) Search(q string, langs []string, sheet string, offset, limit int
 	request.Fields = searchFields
 	request.Highlight = bleve.NewHighlightWithStyle("html")
 	// Without an explicit list Bleve highlights every field the query touched, which
-	// includes the sheet filter term. Restrict it to the languages actually searched.
-	for _, lang := range langs {
-		request.Highlight.AddField(lang)
+	// includes the sheet filter term. Restrict it to the languages.
+	highlightFields := langs
+	if highlightAll {
+		highlightFields = slices.Concat(langs, fields)
+	}
+	for _, lang := range highlightFields {
+		if !slices.Contains(request.Highlight.Fields, lang) {
+			request.Highlight.AddField(lang)
+		}
 	}
 
 	searchResults, err := s.index.Search(request)
@@ -196,7 +241,9 @@ func (s *Store) Search(q string, langs []string, sheet string, offset, limit int
 	// Bleve only fragmented the languages it searched. Give the rest one too, so every
 	// column of a row is trimmed alike instead of one showing a snippet next to thousands
 	// of characters.
-	s.addDisplayFragments(searchResults.Hits, q, langs, fields)
+	if !highlightAll {
+		s.addDisplayFragments(searchResults.Hits, q, langs, fields)
+	}
 
 	items := make([]*Item, 0, len(searchResults.Hits))
 	for _, hit := range searchResults.Hits {

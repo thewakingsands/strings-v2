@@ -67,6 +67,19 @@ func parseLangs(raw string) ([]string, error) {
 	return langs, nil
 }
 
+// parseSearchMode reports whether the mode parameter asks for an advanced search.
+// Absent means the plain one.
+func parseSearchMode(raw string) (advanced bool, err error) {
+	switch strings.TrimSpace(raw) {
+	case "", "simple":
+		return false, nil
+	case "advanced":
+		return true, nil
+	default:
+		return false, fmt.Errorf("invalid mode: %s", raw)
+	}
+}
+
 func parseFields(query url.Values) ([]string, error) {
 	fields := query.Get("fields")
 	if fields == "" {

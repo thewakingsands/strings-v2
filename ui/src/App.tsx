@@ -37,6 +37,7 @@ const StickyContainer = styled.div({
 
 export default function App() {
   const [keywordInput, setKeywordInput] = useState('')
+  const [advanced, setAdvanced] = useState(false)
   const [queryLanguages, setQueryLanguages] = useState<string[]>([
     ...defaultQueryLanguages,
   ])
@@ -65,6 +66,7 @@ export default function App() {
         pageSize: PAGE_SIZE,
         languages: queryLanguages,
         displayLanguages,
+        advanced,
       },
     }
     debouncedSetSearch(query as ISearchQuery)
@@ -106,6 +108,7 @@ export default function App() {
           pageSize: PAGE_SIZE,
           languages: newQueryLanguages,
           displayLanguages: newDisplayLanguages,
+          advanced,
         },
       }
       search.setSearch(query)
@@ -123,6 +126,7 @@ export default function App() {
           pageSize: PAGE_SIZE,
           languages: queryLanguages,
           displayLanguages: newDisplayLanguages,
+          advanced,
         },
       }
       search.setSearch(query)
@@ -133,6 +137,23 @@ export default function App() {
         file: {
           ...search.query.file,
           displayLanguages: newDisplayLanguages,
+        },
+      })
+    }
+  }
+
+  const handleAdvancedChange = (newAdvanced: boolean) => {
+    setAdvanced(newAdvanced)
+    // The same text reads differently in the other mode, so search it again.
+    if (keywordInput) {
+      search.setSearch({
+        keyword: {
+          keyword: keywordInput,
+          page: 1,
+          pageSize: PAGE_SIZE,
+          languages: queryLanguages,
+          displayLanguages,
+          advanced: newAdvanced,
         },
       })
     }
@@ -162,6 +183,7 @@ export default function App() {
       search.setSearch(previousQuery)
       setPreviousQuery(null)
       setKeywordInput(previousQuery.keyword?.keyword || '')
+      setAdvanced(previousQuery.keyword?.advanced ?? false)
       if (previousQuery.keyword?.languages?.length) {
         setQueryLanguages(previousQuery.keyword.languages)
       }
@@ -196,6 +218,8 @@ export default function App() {
                 previousQuery={previousQuery || undefined}
                 keyword={keywordInput}
                 onKeywordChange={handleKeywordInputUpdate}
+                advanced={advanced}
+                onAdvancedChange={handleAdvancedChange}
                 onBackClicked={handleBackClick}
                 queryLanguages={queryLanguages}
                 onQueryLanguagesChange={handleQueryLanguagesChange}
@@ -214,6 +238,7 @@ export default function App() {
               <SearchResult
                 displayLanguages={displayLanguages}
                 keyword={search.query?.keyword?.keyword || ''}
+                advanced={search.query?.keyword?.advanced}
                 items={search.result.items}
                 onContextButtonClick={handleContextClick}
                 highlightItem={highlightItem || undefined}

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"errors"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -47,10 +48,13 @@ type updateStatus struct {
 //     input in any of those languages, return sheet name, rowId, and values from all
 //     languages.
 //
-// GET /search?lang=en&q=battle[&sheet=AchievementKind][&offset=0][&limit=100]
+// GET /search?lang=en&q=battle[&sheet=AchievementKind][&offset=0][&limit=100][&mode=advanced]
 //
 // lang accepts a comma separated list, ordered by decreasing preference:
 // lang=chs,en,ja ranks matches in chs above matches in en above matches in ja.
+//
+// mode=advanced reads q as a bleve query string, such as `chs:*鲈* -en:fish`; see
+// store.AdvancedSearch. A query that does not parse is answered with 400.
 func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -75,6 +79,12 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	advanced, err := parseSearchMode(query.Get("mode"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
 	offset, limit := parseOffsetLimit(query)
 	fields, err := parseFields(query)
 	if err != nil {
@@ -90,7 +100,16 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	results, err := st.Search(q, langs, sheet, offset, limit, fields)
+	search := st.Search
+	if advanced {
+		search = st.AdvancedSearch
+	}
+	results, err := search(q, langs, sheet, offset, limit, fields)
+	var invalidQuery *store.InvalidQueryError
+	if errors.As(err, &invalidQuery) {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

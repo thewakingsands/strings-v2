@@ -120,3 +120,36 @@ func TestParseLangs(t *testing.T) {
 		})
 	}
 }
+
+func TestParseSearchMode(t *testing.T) {
+	cases := []struct {
+		raw     string
+		want    bool
+		wantErr string
+	}{
+		{raw: "", want: false},
+		{raw: "simple", want: false},
+		{raw: "advanced", want: true},
+		{raw: " advanced ", want: true},
+		{raw: "Advanced", wantErr: "invalid mode: Advanced"},
+		{raw: "regex", wantErr: "invalid mode: regex"},
+	}
+
+	for _, tc := range cases {
+		got, err := parseSearchMode(tc.raw)
+
+		if tc.wantErr != "" {
+			if err == nil || err.Error() != tc.wantErr {
+				t.Errorf("parseSearchMode(%q) error = %v, want %q", tc.raw, err, tc.wantErr)
+			}
+			continue
+		}
+		if err != nil {
+			t.Errorf("parseSearchMode(%q) unexpected error: %v", tc.raw, err)
+			continue
+		}
+		if got != tc.want {
+			t.Errorf("parseSearchMode(%q) = %v, want %v", tc.raw, got, tc.want)
+		}
+	}
+}
