@@ -5,7 +5,6 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/blevesearch/bleve/v2"
 	"github.com/blevesearch/bleve/v2/search/query"
 )
 
@@ -21,7 +20,7 @@ import (
 // Bleve itself would send such a clause to the _all field, which mixes the bigrams of
 // the CJK columns with the single characters of the others, ignores the language order
 // and has no idea of the sheet and id fields being keywords.
-func parseAdvancedQuery(q string, langs []string, sheet string) (query.Query, error) {
+func parseAdvancedQuery(q string, langs []string, sheet SheetFilter) (query.Query, error) {
 	parsed, err := query.NewQueryStringQuery(q).Parse()
 	if err != nil {
 		return nil, fmt.Errorf("invalid query: %w", err)
@@ -30,14 +29,7 @@ func parseAdvancedQuery(q string, langs []string, sheet string) (query.Query, er
 	nonLatin := isNonLatinQuery(strings.Join(unfieldedTexts(parsed, nil), " "))
 	textQuery := spreadOverLanguages(parsed, langs, nonLatin)
 
-	if sheet == "" {
-		return textQuery, nil
-	}
-
-	sheetQuery := bleve.NewTermQuery(sheet)
-	sheetQuery.SetField("sheet")
-
-	return bleve.NewConjunctionQuery(textQuery, sheetQuery), nil
+	return sheet.apply(textQuery), nil
 }
 
 // spreadOverLanguages replaces every clause of q that names no field with a dis_max of

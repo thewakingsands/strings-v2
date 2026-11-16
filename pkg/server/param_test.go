@@ -1,8 +1,10 @@
 package server
 
 import (
+	"reflect"
 	"slices"
 	"testing"
+	"xivstrings/pkg/store"
 )
 
 func TestParseLangs(t *testing.T) {
@@ -116,6 +118,68 @@ func TestParseLangs(t *testing.T) {
 			}
 			if !slices.Equal(got, tc.want) {
 				t.Errorf("parseLangs(%q) = %v, want %v", tc.raw, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestParseSheetFilter(t *testing.T) {
+	cases := []struct {
+		name    string
+		raw     string
+		want    store.SheetFilter
+		wantErr string
+	}{
+		{name: "empty value is no filter", raw: ""},
+		{name: "only blank entries is no filter", raw: " , ,"},
+		{
+			name: "one exact name",
+			raw:  "Item",
+			want: store.SheetFilter{Include: []string{"Item"}},
+		},
+		{
+			name: "patterns are trimmed and keep their order",
+			raw:  " quest/* , cut_scene/* ",
+			want: store.SheetFilter{Include: []string{"quest/*", "cut_scene/*"}},
+		},
+		{
+			name: "only exclusions",
+			raw:  "-Item,-Action",
+			want: store.SheetFilter{Exclude: []string{"Item", "Action"}},
+		},
+		{
+			name: "inclusion and exclusion",
+			raw:  "quest/*,-quest/000/*",
+			want: store.SheetFilter{Include: []string{"quest/*"}, Exclude: []string{"quest/000/*"}},
+		},
+		{
+			name: "space after the minus is trimmed",
+			raw:  "- Item",
+			want: store.SheetFilter{Exclude: []string{"Item"}},
+		},
+		{name: "a lone minus is rejected", raw: "-", wantErr: "invalid sheet: -"},
+		{name: "a blank exclusion is rejected", raw: "Item, - ", wantErr: "invalid sheet: -"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := parseSheetFilter(tc.raw)
+
+			if tc.wantErr != "" {
+				if err == nil {
+					t.Fatalf("parseSheetFilter(%q) = %+v, want error %q", tc.raw, got, tc.wantErr)
+				}
+				if err.Error() != tc.wantErr {
+					t.Fatalf("parseSheetFilter(%q) error = %q, want %q", tc.raw, err.Error(), tc.wantErr)
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("parseSheetFilter(%q) unexpected error: %v", tc.raw, err)
+			}
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("parseSheetFilter(%q) = %+v, want %+v", tc.raw, got, tc.want)
 			}
 		})
 	}

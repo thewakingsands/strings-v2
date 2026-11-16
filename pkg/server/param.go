@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"xivstrings/pkg/constant"
+	"xivstrings/pkg/store"
 )
 
 // parseOffsetLimit parses and formats offset and limit from URL query parameters.
@@ -65,6 +66,30 @@ func parseLangs(raw string) ([]string, error) {
 	}
 
 	return langs, nil
+}
+
+// parseSheetFilter parses the comma separated sheet parameter of a search. Each entry
+// is a glob naming the sheets to search in, or, with a leading -, the sheets to leave
+// out. Entries are trimmed and blank ones dropped, so an all-blank value is no filter.
+// A - with nothing after it is rejected rather than read as excluding nothing.
+func parseSheetFilter(raw string) (store.SheetFilter, error) {
+	var filter store.SheetFilter
+	for _, part := range strings.Split(raw, ",") {
+		entry := strings.TrimSpace(part)
+		if entry == "" {
+			continue
+		}
+		if excluded, ok := strings.CutPrefix(entry, "-"); ok {
+			excluded = strings.TrimSpace(excluded)
+			if excluded == "" {
+				return store.SheetFilter{}, fmt.Errorf("invalid sheet: -")
+			}
+			filter.Exclude = append(filter.Exclude, excluded)
+			continue
+		}
+		filter.Include = append(filter.Include, entry)
+	}
+	return filter, nil
 }
 
 // parseSearchMode reports whether the mode parameter asks for an advanced search.

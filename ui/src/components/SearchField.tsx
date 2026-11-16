@@ -33,17 +33,29 @@ const syntaxExamples: [string, string][] = [
   ['fish~1', '模糊匹配'],
 ]
 
+// Stripped out of the query by splitSheetTokens before it is sent, so these work in
+// plain search too, unlike sheet: above.
+const sheetTokenExamples: [string, string][] = [
+  ['filename:quest/*', '只搜匹配的表（* ? 通配）'],
+  ['filename:Item,Action', '只搜其中任一个表'],
+  ['-filename:Item', '排除某个表'],
+]
+
+function syntaxRows(examples: [string, string][]) {
+  return examples.map(([syntax, meaning]) => (
+    <div key={syntax} style={{ display: 'contents' }}>
+      <dt>{syntax}</dt>
+      <dd>{meaning}</dd>
+    </div>
+  ))
+}
+
 const advancedHelp = (
   <div>
     <div>高级查询（bleve query string）</div>
-    <SyntaxList>
-      {syntaxExamples.map(([syntax, meaning]) => (
-        <div key={syntax} style={{ display: 'contents' }}>
-          <dt>{syntax}</dt>
-          <dd>{meaning}</dd>
-        </div>
-      ))}
-    </SyntaxList>
+    <SyntaxList>{syntaxRows(syntaxExamples)}</SyntaxList>
+    <div style={{ marginTop: 8 }}>两种模式都可用</div>
+    <SyntaxList>{syntaxRows(sheetTokenExamples)}</SyntaxList>
   </div>
 )
 

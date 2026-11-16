@@ -266,7 +266,11 @@ func TestRelevanceOnPinnedData(t *testing.T) {
 	for _, tc := range relevanceCases {
 		t.Run(tc.name, func(t *testing.T) {
 			limit := tc.limit()
-			result, err := st.Search(tc.query, tc.langs, tc.sheet, 0, limit, relevanceFields)
+			var sheet SheetFilter
+			if tc.sheet != "" {
+				sheet.Include = []string{tc.sheet}
+			}
+			result, err := st.Search(tc.query, tc.langs, sheet, 0, limit, relevanceFields)
 			if err != nil {
 				t.Fatalf("search: %v", err)
 			}

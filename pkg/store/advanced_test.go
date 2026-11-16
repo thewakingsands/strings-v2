@@ -39,7 +39,7 @@ func newAdvancedTestStore(t *testing.T) *Store {
 func advancedSearch(t *testing.T, st *Store, q string, langs []string) *SearchResult {
 	t.Helper()
 
-	result, err := st.AdvancedSearch(q, langs, "", 0, 100, searchTestFields)
+	result, err := st.AdvancedSearch(q, langs, SheetFilter{}, 0, 100, searchTestFields)
 	if err != nil {
 		t.Fatalf("advanced search %q: %v", q, err)
 	}
@@ -57,7 +57,7 @@ func sortedRowIDsOf(items []*Item) []string {
 func TestAdvancedSearchWildcardFindsSingleCJKCharacter(t *testing.T) {
 	st := newAdvancedTestStore(t)
 
-	plain, err := st.Search("鲈", []string{"chs"}, "", 0, 100, searchTestFields)
+	plain, err := st.Search("鲈", []string{"chs"}, SheetFilter{}, 0, 100, searchTestFields)
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
@@ -79,7 +79,7 @@ func TestAdvancedSearchUnfieldedTermMatchesLikePlainSearch(t *testing.T) {
 	st := newAdvancedTestStore(t)
 	langs := []string{"chs", "en"}
 
-	plain, err := st.Search("onion", langs, "", 0, 100, searchTestFields)
+	plain, err := st.Search("onion", langs, SheetFilter{}, 0, 100, searchTestFields)
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
@@ -143,7 +143,7 @@ func TestAdvancedSearchFiltersBySheetField(t *testing.T) {
 func TestAdvancedSearchRespectsSheetParameter(t *testing.T) {
 	st := newAdvancedTestStore(t)
 
-	result, err := st.AdvancedSearch("onion", []string{"chs", "en"}, "Other", 0, 100, searchTestFields)
+	result, err := st.AdvancedSearch("onion", []string{"chs", "en"}, SheetFilter{Include: []string{"Other"}}, 0, 100, searchTestFields)
 	if err != nil {
 		t.Fatalf("advanced search: %v", err)
 	}
@@ -156,7 +156,7 @@ func TestAdvancedSearchRespectsSheetParameter(t *testing.T) {
 func TestAdvancedSearchReportsUnparsableQuery(t *testing.T) {
 	st := newAdvancedTestStore(t)
 
-	_, err := st.AdvancedSearch(`"unclosed`, []string{"chs"}, "", 0, 100, searchTestFields)
+	_, err := st.AdvancedSearch(`"unclosed`, []string{"chs"}, SheetFilter{}, 0, 100, searchTestFields)
 
 	var invalid *InvalidQueryError
 	if !errors.As(err, &invalid) {
@@ -167,7 +167,7 @@ func TestAdvancedSearchReportsUnparsableQuery(t *testing.T) {
 func TestParseAdvancedQueryWeightsLanguagesLikePlainSearch(t *testing.T) {
 	langs := []string{"chs", "en"}
 
-	parsed, err := parseAdvancedQuery("鲈^2", langs, "")
+	parsed, err := parseAdvancedQuery("鲈^2", langs, SheetFilter{})
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}

@@ -80,7 +80,7 @@ func rowIDsOf(items []*Item) []string {
 }
 
 func TestParseSearchQuerySingleLanguageStaysUnboosted(t *testing.T) {
-	q := parseSearchQuery("onion", []string{"en"}, "")
+	q := parseSearchQuery("onion", []string{"en"}, SheetFilter{})
 
 	matchQuery, ok := q.(*query.MatchQuery)
 	if !ok {
@@ -99,7 +99,7 @@ func TestParseSearchQuerySingleLanguageStaysUnboosted(t *testing.T) {
 
 func TestParseSearchQueryBoostsByLanguageOrder(t *testing.T) {
 	langs := []string{"chs", "en", "ja"}
-	q := parseSearchQuery("onion", langs, "")
+	q := parseSearchQuery("onion", langs, SheetFilter{})
 
 	disMax, ok := q.(*disMaxQuery)
 	if !ok {
@@ -153,7 +153,7 @@ func TestParseSearchQueryAddsSheetFilter(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			q := parseSearchQuery("onion", tc.langs, "Item")
+			q := parseSearchQuery("onion", tc.langs, SheetFilter{Include: []string{"Item"}})
 
 			conjunction, ok := q.(*query.ConjunctionQuery)
 			if !ok {
@@ -195,7 +195,7 @@ func sameQueryType(got, want any) bool {
 func TestSearchSingleLanguageOnlyMatchesThatLanguage(t *testing.T) {
 	st := newTestStore(t)
 
-	result, err := st.Search("onion", []string{"en"}, "", 0, 100, searchTestFields)
+	result, err := st.Search("onion", []string{"en"}, SheetFilter{}, 0, 100, searchTestFields)
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
@@ -214,7 +214,7 @@ func TestSearchAcrossLanguagesRanksByLanguageOrder(t *testing.T) {
 
 	// Item#1 matches in chs only, Item#2 in en only. The two documents are otherwise
 	// symmetric, so the boost derived from the lang order is what separates them.
-	chsFirst, err := st.Search("onion", []string{"chs", "en"}, "Item", 0, 100, searchTestFields)
+	chsFirst, err := st.Search("onion", []string{"chs", "en"}, SheetFilter{Include: []string{"Item"}}, 0, 100, searchTestFields)
 	if err != nil {
 		t.Fatalf("search chs,en: %v", err)
 	}
@@ -226,7 +226,7 @@ func TestSearchAcrossLanguagesRanksByLanguageOrder(t *testing.T) {
 		t.Errorf("lang=chs,en ranked the en match above the chs match: %v", rowIDsOf(chsFirst.Items))
 	}
 
-	enFirst, err := st.Search("onion", []string{"en", "chs"}, "Item", 0, 100, searchTestFields)
+	enFirst, err := st.Search("onion", []string{"en", "chs"}, SheetFilter{Include: []string{"Item"}}, 0, 100, searchTestFields)
 	if err != nil {
 		t.Fatalf("search en,chs: %v", err)
 	}
@@ -242,7 +242,7 @@ func TestSearchAcrossLanguagesRanksByLanguageOrder(t *testing.T) {
 func TestSearchAcrossLanguagesDeduplicatesTotal(t *testing.T) {
 	st := newTestStore(t)
 
-	result, err := st.Search("onion", []string{"chs", "en"}, "", 0, 100, searchTestFields)
+	result, err := st.Search("onion", []string{"chs", "en"}, SheetFilter{}, 0, 100, searchTestFields)
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
@@ -260,7 +260,7 @@ func TestSearchAcrossLanguagesDeduplicatesTotal(t *testing.T) {
 func TestSearchAcrossLanguagesRespectsSheetFilter(t *testing.T) {
 	st := newTestStore(t)
 
-	result, err := st.Search("onion", []string{"chs", "en"}, "Item", 0, 100, searchTestFields)
+	result, err := st.Search("onion", []string{"chs", "en"}, SheetFilter{Include: []string{"Item"}}, 0, 100, searchTestFields)
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
@@ -281,7 +281,7 @@ func TestSearchReturnsCompleteValuesAndTruncatedHighlight(t *testing.T) {
 
 	st := newTestStore(t)
 
-	result, err := st.Search("eggplant", []string{"en"}, "Item", 0, 100, searchTestFields)
+	result, err := st.Search("eggplant", []string{"en"}, SheetFilter{Include: []string{"Item"}}, 0, 100, searchTestFields)
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
@@ -309,7 +309,7 @@ func TestSearchReturnsCompleteValuesAndTruncatedHighlight(t *testing.T) {
 func TestSearchHighlightsAreEscapedWhileValuesAreRaw(t *testing.T) {
 	st := newTestStore(t)
 
-	result, err := st.Search("wives", []string{"en"}, "Item", 0, 100, searchTestFields)
+	result, err := st.Search("wives", []string{"en"}, SheetFilter{Include: []string{"Item"}}, 0, 100, searchTestFields)
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
@@ -335,7 +335,7 @@ func TestSearchPreviewsSearchedLanguagesThatDidNotMatch(t *testing.T) {
 	st := newTestStore(t)
 
 	// Item#1 matches in chs only.
-	result, err := st.Search("onion", []string{"chs", "en"}, "Item", 0, 100, searchTestFields)
+	result, err := st.Search("onion", []string{"chs", "en"}, SheetFilter{Include: []string{"Item"}}, 0, 100, searchTestFields)
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
@@ -364,7 +364,7 @@ func TestSearchPreviewsSearchedLanguagesThatDidNotMatch(t *testing.T) {
 func TestSearchWithoutLanguageFails(t *testing.T) {
 	st := newTestStore(t)
 
-	if _, err := st.Search("onion", nil, "", 0, 100, searchTestFields); err == nil {
+	if _, err := st.Search("onion", nil, SheetFilter{}, 0, 100, searchTestFields); err == nil {
 		t.Error("search without a language succeeded, want an error")
 	}
 }

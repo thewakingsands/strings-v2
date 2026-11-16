@@ -119,12 +119,13 @@ Each JSON file under the strings directory contains an array of items:
   - Endpoint: `GET /api/search`
   - Query parameters: `lang` required, `q` required, `sheet` optional, `fields` optional, `offset` optional, `limit` optional, `mode` optional
   - Response: JSON with matching items and meta fields such as `total` and `elapsed`
+  - `sheet` is a comma separated list of sheet patterns; see [Filtering by sheet](#filtering-by-sheet)
   - See [Searching several languages at once](#searching-several-languages-at-once),
     [Advanced queries](#advanced-queries) and [Values and highlights](#values-and-highlights)
 
 - Get items by sheet
   - Endpoint: `GET /api/items`
-  - Query parameters: `sheet` required, `offset` optional, `limit` optional
+  - Query parameters: `sheet` required (one exact sheet name, no patterns), `offset` optional, `limit` optional
   - Response: JSON with items for the sheet and meta
 
 - Version
@@ -157,6 +158,35 @@ Supported codes are `chs`, `tc`, `en`, `de`, `fr`, `ja`, `ko`.
 `fields` chooses which language columns come back and defaults to `chs,tc,en,ja`. It is
 independent of `lang`: searching a language that `fields` leaves out is allowed, and
 that language is simply absent from the response.
+
+### Filtering by sheet
+
+`sheet` on `/api/search` takes a comma separated list of sheet patterns. A leading `-`
+excludes the sheets a pattern matches instead of including them:
+
+```bash
+curl -G "http://127.0.0.1:8080/api/search" --data-urlencode "lang=ja" \
+  --data-urlencode "q=覚えていろ" --data-urlencode "sheet=quest/*,cut_scene/*"
+curl -G "http://127.0.0.1:8080/api/search" --data-urlencode "lang=en" \
+  --data-urlencode "q=onion" --data-urlencode "sheet=-Item,-Action,-Addon"
+```
+
+- `*` matches any run of characters, `/` included, and `?` exactly one. A pattern
+  without either is an exact sheet name, so `sheet=Item` works as it always has.
+  Matching is case-sensitive: `sheet=item` finds nothing.
+- A row is kept when it matches at least one inclusion (or there are none) and none of
+  the exclusions, so `sheet=quest/*,-quest/000/*` is every quest sheet outside
+  `quest/000/`, and a list of only exclusions starts from every row.
+- Filtering never changes the ranking: the result is the unfiltered order with the
+  other rows removed, and `meta.total` counts the rows kept.
+- A pattern that matches no sheet returns no rows, not an error. A `-` with nothing
+  after it is rejected with `400 invalid sheet: -`.
+- It applies in both modes. In advanced mode the query's own `sheet:` clauses still
+  work alongside it.
+
+The web UI's search box takes the same filter as tokens, in either mode:
+`filename:quest/*` includes, `-filename:Item,Action` excludes each listed pattern, and
+every such token is taken out of the query and sent as `sheet`.
 
 ### Advanced queries
 
