@@ -179,7 +179,7 @@ func TestParseAdvancedQueryWeightsLanguagesLikePlainSearch(t *testing.T) {
 	for i, disjunct := range dismax.disjuncts {
 		// The query's own ^2 times the weight parseSearchQuery would give this language,
 		// which for a CJK only query includes damping the Latin language.
-		want := 2 * languageBoost(i, langs[i], true)
+		want := 2 * languageBoost(i, langs[i], nonLatinScript)
 		if got := disjunct.(query.BoostableQuery).Boost(); got != want {
 			t.Errorf("%s boost = %v, want %v", langs[i], got, want)
 		}
@@ -244,7 +244,7 @@ func TestParseAdvancedQueryLeavesFuzzyKanaClauseAlone(t *testing.T) {
 		switch q := q.(type) {
 		case *query.MatchQuery:
 			matches = append(matches, q)
-		case *kanaMatchQuery:
+		case *termsMatchQuery:
 			folded++
 		case *query.BooleanQuery:
 			for _, child := range []query.Query{q.Must, q.Should, q.MustNot, q.Filter} {

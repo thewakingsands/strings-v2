@@ -76,7 +76,7 @@ var relevanceCases = []relevanceCase{
 		name:       "sentence outranks untranslated ui strings",
 		query:      "I'll never win at rate",
 		langs:      []string{"chs", "en", "ja"},
-		wantTotal:  10346,
+		wantTotal:  10340,
 		wantTop:    []string{"DefaultTalk#597050"},
 		wantAbsent: []string{"Addon#5092"},
 	},
@@ -87,7 +87,7 @@ var relevanceCases = []relevanceCase{
 		name:      "quest line and its item rank above the rest",
 		query:     "The merchant is overjoyed to receive his stolen merchandise",
 		langs:     []string{"chs", "en", "ja"},
-		wantTotal: 6902,
+		wantTotal: 6400,
 		wantTop:   []string{"quest/002/ClsGla050_00256#8"},
 		wantRanked: []rankedRow{
 			{"EventItem#2001813", 5},

@@ -10,6 +10,10 @@ import (
 	"unicode"
 
 	"github.com/blevesearch/bleve/v2"
+	"github.com/blevesearch/bleve/v2/analysis"
+	"github.com/blevesearch/bleve/v2/analysis/lang/cjk"
+	"github.com/blevesearch/bleve/v2/analysis/lang/en"
+	"github.com/blevesearch/bleve/v2/registry"
 	"github.com/blevesearch/bleve/v2/search/query"
 )
 
@@ -105,27 +109,90 @@ const languageBoostStep = 0.01
 // an even wider IDF gap between the columns are covered too.
 const nonNativeScriptBoost = 0.05
 
+// latinInCJKBoost damps the CJK columns for a query written in Latin letters alone, the
+// same problem as nonNativeScriptBoost in the other direction.
+//
+// The Latin text in those columns is English nobody translated, mostly short: credits,
+// labels, markup. A word of it is rare in a CJK column, so its IDF there dwarfs the same
+// word's in en, and a value holding that one word outscores the row whose en column
+// holds the whole line. The CJK stop words used to hide this by diluting the clause; see
+// latinInCJKAnalyzer.
+//
+// Measured with the relevance eval on publish-20260728-3b64471, each case searching its
+// own language and the other two, first and then last. Undamped, 37 rows the cases name
+// as noise reached a first page; at 0.5, 10 or 11; at 0.2 and below, 1, and every English
+// case ranks exactly where searching en alone puts it. 0.2 down to 0.01 score the same,
+// so this takes nonNativeScriptBoost's value from the middle of that range.
+const latinInCJKBoost = 0.05
+
+// latinInCJKAnalyzer is what a query written in Latin letters alone is matched with in
+// the CJK columns: their own cjk analyzer, followed by the stop list the en column uses.
+//
+// The cjk analyzer has no stop list, so English left untranslated in those columns is
+// indexed down to its "the" and "but". Without this, a query of nothing but stop words,
+// which finds nothing in en, found those rows instead, and every English query matched
+// them on its commonest words. The Latin text in the CJK columns is English, markup and
+// credits nearly without exception, so the English list is the one that applies.
+//
+// A query with a letter of any other script keeps its stop words: the A of Aランク is
+// part of the name, and the stop list would drop it.
+//
+// It is registered with bleve rather than added to the index mapping, so it changes how
+// a query is analyzed and leaves the index and its fingerprint alone.
+const latinInCJKAnalyzer = "cjk_stop_en"
+
+func init() {
+	if err := registry.RegisterAnalyzer(latinInCJKAnalyzer, newLatinInCJKAnalyzer); err != nil {
+		panic(err)
+	}
+}
+
+func newLatinInCJKAnalyzer(_ map[string]interface{}, cache *registry.Cache) (analysis.Analyzer, error) {
+	analyzer, err := cache.AnalyzerNamed(cjk.AnalyzerName)
+	if err != nil {
+		return nil, err
+	}
+	cjkAnalyzer, ok := analyzer.(*analysis.DefaultAnalyzer)
+	if !ok {
+		return nil, fmt.Errorf("analyzer %s is a %T, not a token filter chain", cjk.AnalyzerName, analyzer)
+	}
+	stop, err := cache.TokenFilterNamed(en.StopName)
+	if err != nil {
+		return nil, err
+	}
+
+	rv := *cjkAnalyzer
+	rv.TokenFilters = append(slices.Clone(cjkAnalyzer.TokenFilters), stop)
+	return &rv, nil
+}
+
+// queryAnalyzer names the analyzer a query in script is matched with in lang, or returns
+// "" for the one the index analyzed lang with.
+func queryAnalyzer(lang string, script queryScript) string {
+	if script == latinScript && usesCJKAnalyzer(lang) {
+		return latinInCJKAnalyzer
+	}
+	return ""
+}
+
 // parseSearchQuery matches q against every language in langs, ranking earlier
 // languages above later ones when they are otherwise equally good.
 func parseSearchQuery(q string, langs []string, sheet SheetFilter) query.Query {
-	nonLatin := isNonLatinQuery(q)
+	script := scriptOf(q)
 
 	disjuncts := make([]query.Query, 0, len(langs))
 	for i, lang := range langs {
 		matchQuery := bleve.NewMatchQuery(q)
 		matchQuery.SetField(lang)
+		matchQuery.Analyzer = queryAnalyzer(lang, script)
 
 		// Left alone at exactly 1, which keeps a single language Latin search scoring
 		// bit for bit as it did before this parameter accepted a list.
-		if boost := languageBoost(i, lang, nonLatin); boost != 1 {
+		if boost := languageBoost(i, lang, script); boost != 1 {
 			matchQuery.SetBoost(boost)
 		}
 
-		if foldsKana(lang) {
-			disjuncts = append(disjuncts, newKanaMatchQuery(matchQuery))
-			continue
-		}
-		disjuncts = append(disjuncts, matchQuery)
+		disjuncts = append(disjuncts, newTermsMatchQuery(matchQuery, foldsKana(lang)))
 	}
 
 	var textQuery query.Query
@@ -138,34 +205,58 @@ func parseSearchQuery(q string, langs []string, sheet SheetFilter) query.Query {
 	return sheet.apply(textQuery)
 }
 
-// languageBoost weights the clause searching lang, the i-th language asked for.
-func languageBoost(i int, lang string, nonLatin bool) float64 {
+// languageBoost weights the clause searching lang, the i-th language asked for, with a
+// query written in script.
+func languageBoost(i int, lang string, script queryScript) float64 {
 	boost := 1.0
 	if i > 0 {
 		boost = 1 - float64(i)*languageBoostStep
 	}
-	if nonLatin && !usesCJKAnalyzer(lang) {
+	if script == nonLatinScript && !usesCJKAnalyzer(lang) {
 		boost *= nonNativeScriptBoost
+	}
+	if script == latinScript && usesCJKAnalyzer(lang) {
+		boost *= latinInCJKBoost
 	}
 	return boost
 }
 
-// isNonLatinQuery reports whether the query has letters and none of them are Latin.
-// Such a query carries no word an en, de or fr analyzer can recognise, so those fields
-// can only match it a character at a time. German ü and French é are Latin letters, and
-// digits or punctuation on their own do not make a query non-Latin.
-func isNonLatinQuery(q string) bool {
-	found := false
+// queryScript is what the letters of a query say about the analyzers that can make
+// sense of it.
+type queryScript int
+
+const (
+	// mixedScript has letters of both kinds, or none at all.
+	mixedScript queryScript = iota
+	// latinScript has letters, and every one of them is Latin.
+	latinScript
+	// nonLatinScript has letters and none of them are Latin. Such a query carries no
+	// word an en, de or fr analyzer can recognise, so those fields can only match it a
+	// character at a time.
+	nonLatinScript
+)
+
+// scriptOf reports the script q is written in. German ü and French é are Latin letters,
+// and digits or punctuation say nothing either way.
+func scriptOf(q string) queryScript {
+	latin, other := false, false
 	for _, r := range q {
 		if !unicode.IsLetter(r) {
 			continue
 		}
 		if unicode.Is(unicode.Latin, r) {
-			return false
+			latin = true
+		} else {
+			other = true
 		}
-		found = true
 	}
-	return found
+	switch {
+	case latin && !other:
+		return latinScript
+	case other && !latin:
+		return nonLatinScript
+	}
+	return mixedScript
 }
 
 // Search finds items whose value in any of the given languages matches the query.

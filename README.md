@@ -152,8 +152,14 @@ curl "http://127.0.0.1:8080/api/search?lang=chs,en,ja&sheet=Item&q=onion"
 
 - The order is the preference order. `lang=chs,en,ja` ranks a row that matched in `chs`
   above one that matched only in `en`, which in turn ranks above one that matched only
-  in `ja`, the same as boosting `chs^3 en^2 ja^1`. A single language is scored exactly
-  as it was before this parameter accepted lists.
+  in `ja`, the same as boosting `chs^3 en^2 ja^1`. With a single language there is no
+  order to apply, and the result is that column's own ranking.
+- A column that can only match the query through text nobody translated counts for a
+  twentieth, wherever it sits in the order: `chs`, `tc`, `ja` and `ko` for a query
+  written only in Latin letters, and `en`, `de` and `fr` for one with no Latin letters
+  at all. So `lang=chs,en&q=onion` ranks a row whose `en` column says onion above one
+  whose `chs` column was left in English. Those rows still match, and searching that
+  column alone ranks them as before.
 - Blank segments and repeats are ignored, so `lang=chs,,en` and `lang=chs,chs,en` both
   mean `lang=chs,en`.
 - An unknown code is rejected with `400 invalid lang: <code>`, matching how `fields`
@@ -166,8 +172,16 @@ Supported codes are `chs`, `tc`, `en`, `de`, `fr`, `ja`, `ko`.
 `ja` matches hiragana and katakana interchangeably: `q=かたかな` finds a row that spells
 it `カタカナ`, and the reverse. Each part of the query counts in full where it matches
 the script it was typed in and for less where it matches only the other one, so the
-spelling typed ranks first. `meta.total` grows accordingly. A query with no kana in it
-scores exactly as it did before. The other languages are not folded.
+spelling typed ranks first. `meta.total` grows accordingly. Folding leaves a query with
+no kana in it as it was. The other languages are not folded.
+
+English stop words such as `the`, `but` and `how` never match in `en`, whose analyzer
+drops them, and a query written only in Latin letters skips them in `chs`, `tc`, `ja`
+and `ko` too, where the only English is text nobody translated. So `q=But how` finds
+nothing in any of those five, and `q=the onion` matches there as `onion` alone. A query
+with any other script in it, such as `Aランク`, keeps every word, since the Latin letters
+then belong to a name. `de` and `fr` drop their own languages' stop words, not English
+ones: `but` is a French word.
 
 `fields` chooses which language columns come back and defaults to `chs,tc,en,ja`. It is
 independent of `lang`: searching a language that `fields` leaves out is allowed, and
@@ -238,12 +252,16 @@ Both endpoints stop a search that would otherwise hold a core for minutes:
   `504 search took longer than 8s and was stopped`. The deadline sits under the
   server's 10 second write timeout, past which no answer could be sent at all.
 - A clause may expand to at most 8192 index terms in each field it searches, and one
-  query may combine at most 8192 terms. A query past either is rejected with
+  query may combine at most 8192 different terms. A query past either is rejected with
   `422 query expands to more than 8192 terms in <field>; ...` or
   `422 query combines more than 8192 terms; ...`. That leaves room for every sheet
   pattern, a one-letter prefix such as `en:s*`, and any value in the corpus pasted
   whole, while a bare `*` or a CJK term with `~2`, which match most of a column, are
   refused instead of running for tens of seconds.
+- A term the query repeats is searched once and weighs as much as all its repeats. A
+  pasted paragraph repeats its commonest words and character pairs, whose lists of rows
+  are the longest to read, and reading each only once is what lets every value in the
+  corpus, pasted whole, finish inside the deadline.
 - A search whose client disconnects is stopped, with nothing written back.
 
 The `sheet` parameter is exempt from the term limit: it filters without scoring, and
@@ -279,10 +297,13 @@ advanced query is scored like any other clause, and is limited.
   query matched has its matches wrapped in `<mark>`; one it did not match is simply the
   start of the value. Both are cut by the same fragmenter, so all the columns of a row
   come back a comparable length rather than one snippet beside thousands of characters.
-- Matching for a language outside `lang` runs that language's own analyzer, so it agrees
-  with the index: quotes are separators, English is stemmed, and CJK is cut into bigrams.
-  A query typed with `"Software"` therefore highlights a value stored with `“Software”`,
-  and a `ja` column marks a word in either kana script, as the search would match it.
+- In a plain search, a language outside `lang` is matched the way searching it would
+  match, so it agrees with the index: quotes are separators, English is stemmed, CJK is
+  cut into bigrams, and English stop words are skipped as described above. A query typed
+  with `"Software"` therefore highlights a value stored with `“Software”`, and a `ja`
+  column marks a word in either kana script, as the search would match it.
+- An advanced query marks only what it searched. A language outside `lang` is marked
+  where a clause names it, as `de:zwiebel` does, and is otherwise the start of its value.
 - `GET /api/items` does no matching and returns no `highlights` at all.
 
 Before this split, `values` carried the truncated snippet for the searched language,

@@ -26,46 +26,47 @@ func parseAdvancedQuery(q string, langs []string, sheet SheetFilter) (query.Quer
 		return nil, fmt.Errorf("invalid query: %w", err)
 	}
 
-	nonLatin := isNonLatinQuery(strings.Join(unfieldedTexts(parsed, nil), " "))
-	textQuery := foldKanaClauses(spreadOverLanguages(parsed, langs, nonLatin))
+	script := scriptOf(strings.Join(unfieldedTexts(parsed, nil), " "))
+	textQuery := matchTermsOnce(spreadOverLanguages(parsed, langs, script))
 
 	return sheet.apply(textQuery), nil
 }
 
-// foldKanaClauses lets every plain match clause on a kana folded field match either
-// script, covering the copies spreadOverLanguages made as well as clauses that named the
-// field themselves.
+// matchTermsOnce makes every plain match clause a termsMatchQuery, which searches a
+// repeated term once and on a kana folded field matches either script. That covers the
+// copies spreadOverLanguages made as well as clauses that named their field themselves.
 //
-// Phrases stay exact, since quoting is how a user asks for the text as typed. Fuzzy,
-// wildcard and regexp clauses are not analyzed into terms the way a match clause is, so
-// they are left alone too. The query string parser only ever sets fuzziness through
-// SetFuzziness, which is why a nonzero Fuzziness identifies every fuzzy clause.
-func foldKanaClauses(q query.Query) query.Query {
+// Phrases stay as they are, since quoting is how a user asks for the text as typed, and
+// a phrase needs every position. Fuzzy, wildcard and regexp clauses are not analyzed
+// into terms the way a match clause is, so they are left alone too. The query string
+// parser only ever sets fuzziness through SetFuzziness, which is why a nonzero Fuzziness
+// identifies every fuzzy clause.
+func matchTermsOnce(q query.Query) query.Query {
 	switch q := q.(type) {
 	case *query.BooleanQuery:
-		q.Must = foldKanaClauses(q.Must)
-		q.Should = foldKanaClauses(q.Should)
-		q.MustNot = foldKanaClauses(q.MustNot)
-		q.Filter = foldKanaClauses(q.Filter)
+		q.Must = matchTermsOnce(q.Must)
+		q.Should = matchTermsOnce(q.Should)
+		q.MustNot = matchTermsOnce(q.MustNot)
+		q.Filter = matchTermsOnce(q.Filter)
 		return q
 	case *query.ConjunctionQuery:
 		for i, conjunct := range q.Conjuncts {
-			q.Conjuncts[i] = foldKanaClauses(conjunct)
+			q.Conjuncts[i] = matchTermsOnce(conjunct)
 		}
 		return q
 	case *query.DisjunctionQuery:
 		for i, disjunct := range q.Disjuncts {
-			q.Disjuncts[i] = foldKanaClauses(disjunct)
+			q.Disjuncts[i] = matchTermsOnce(disjunct)
 		}
 		return q
 	case *disMaxQuery:
 		for i, disjunct := range q.disjuncts {
-			q.disjuncts[i] = foldKanaClauses(disjunct)
+			q.disjuncts[i] = matchTermsOnce(disjunct)
 		}
 		return q
 	case *query.MatchQuery:
-		if foldsKana(q.FieldVal) && q.Fuzziness == 0 {
-			return newKanaMatchQuery(q)
+		if q.Fuzziness == 0 {
+			return newTermsMatchQuery(q, foldsKana(q.FieldVal))
 		}
 		return q
 	default:
@@ -74,23 +75,24 @@ func foldKanaClauses(q query.Query) query.Query {
 }
 
 // spreadOverLanguages replaces every clause of q that names no field with a dis_max of
-// one copy per language, and returns q with those replacements made.
-func spreadOverLanguages(q query.Query, langs []string, nonLatin bool) query.Query {
+// one copy per language, and returns q with those replacements made. script is that of
+// all such clauses together, as scriptOf reads it.
+func spreadOverLanguages(q query.Query, langs []string, script queryScript) query.Query {
 	switch q := q.(type) {
 	case *query.BooleanQuery:
-		q.Must = spreadOverLanguages(q.Must, langs, nonLatin)
-		q.Should = spreadOverLanguages(q.Should, langs, nonLatin)
-		q.MustNot = spreadOverLanguages(q.MustNot, langs, nonLatin)
-		q.Filter = spreadOverLanguages(q.Filter, langs, nonLatin)
+		q.Must = spreadOverLanguages(q.Must, langs, script)
+		q.Should = spreadOverLanguages(q.Should, langs, script)
+		q.MustNot = spreadOverLanguages(q.MustNot, langs, script)
+		q.Filter = spreadOverLanguages(q.Filter, langs, script)
 		return q
 	case *query.ConjunctionQuery:
 		for i, conjunct := range q.Conjuncts {
-			q.Conjuncts[i] = spreadOverLanguages(conjunct, langs, nonLatin)
+			q.Conjuncts[i] = spreadOverLanguages(conjunct, langs, script)
 		}
 		return q
 	case *query.DisjunctionQuery:
 		for i, disjunct := range q.Disjuncts {
-			q.Disjuncts[i] = spreadOverLanguages(disjunct, langs, nonLatin)
+			q.Disjuncts[i] = spreadOverLanguages(disjunct, langs, script)
 		}
 		return q
 	case query.FieldableQuery:
@@ -99,7 +101,8 @@ func spreadOverLanguages(q query.Query, langs []string, nonLatin bool) query.Que
 		}
 		disjuncts := make([]query.Query, 0, len(langs))
 		for i, lang := range langs {
-			disjuncts = append(disjuncts, copyForLanguage(q, lang, languageBoost(i, lang, nonLatin)))
+			copied := copyForLanguage(q, lang, languageBoost(i, lang, script))
+			disjuncts = append(disjuncts, withQueryAnalyzer(copied, queryAnalyzer(lang, script)))
 		}
 		if len(disjuncts) == 1 {
 			return disjuncts[0]
@@ -128,6 +131,22 @@ func copyForLanguage(q query.FieldableQuery, lang string, boost float64) query.Q
 		boostable.SetBoost(boostable.Boost() * boost)
 	}
 	return rv
+}
+
+// withQueryAnalyzer has q analyze its text with analyzer, when q is a clause that analyzes
+// its text at all and analyzer is not "". Wildcards, regular expressions and terms are
+// matched as typed, so they are left alone.
+func withQueryAnalyzer(q query.Query, analyzer string) query.Query {
+	if analyzer == "" {
+		return q
+	}
+	switch q := q.(type) {
+	case *query.MatchQuery:
+		q.Analyzer = analyzer
+	case *query.MatchPhraseQuery:
+		q.Analyzer = analyzer
+	}
+	return q
 }
 
 // unfieldedTexts collects the search text of every clause in q that names no field,
