@@ -1,6 +1,6 @@
 import { Spinner } from '@blueprintjs/core'
 import styled from '@emotion/styled'
-import { useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useDebouncedCallback } from 'use-debounce'
 import { DisplayLanguageBar } from './components/DisplayLanguageBar'
 import { Footer } from './components/Footer'
@@ -12,11 +12,31 @@ import { SearchError } from './components/SearchError'
 import { SearchResult } from './components/SearchResult'
 import { TopNav } from './components/TopNav'
 import type { StringItem } from './search/interface'
+import type { IKeywordProps } from './search/linesByKeyword'
+import {
+  formatUrlView,
+  parseUrlView,
+  type ResolvedUrlView,
+  resolveUrlView,
+  searchView,
+  type UrlView,
+  viewToQuery,
+} from './search/urlState'
 import { useLanguageProbe } from './search/useLanguageProbe'
 import { type ISearchQuery, useSearch } from './search/useSearch'
+import {
+  readInitialUrl,
+  type UrlHistoryState,
+  useUrlHistory,
+} from './search/useUrlHistory'
+import {
+  readStoredDisplayLanguages,
+  readStoredQueryLanguages,
+} from './utils/language'
 import { useIsMobile } from './utils/useIsMobile'
 import {
   type LanguageChange,
+  type LanguageSelection,
   reasonNeedsRefetch,
   useLanguageSelection,
 } from './utils/useLanguageSelection'
@@ -50,16 +70,62 @@ const ResultsSection = styled.div({
 
 const PAGE_SIZE = 20
 
-export default function App() {
-  const [keywordInput, setKeywordInput] = useState('')
-  const [advanced, setAdvanced] = useState(false)
-  const [highlightItem, setHighlightItem] = useState<Pick<
-    StringItem,
-    'sheet' | 'index'
-  > | null>(null)
-  const [previousQuery, setPreviousQuery] = useState<ISearchQuery | null>(null)
+type HighlightItem = Pick<StringItem, 'sheet' | 'index'>
 
-  const search = useSearch(undefined)
+/** The search a context view goes back to, as its history entry recorded it. */
+function previousQueryFrom(
+  state: UrlHistoryState,
+  fallback: LanguageSelection,
+): ISearchQuery | null {
+  if (!state.previousSearch) return null
+  const view = parseUrlView(state.previousSearch)
+  if (view.kind !== 'search') return null
+  return viewToQuery(resolveUrlView(view, fallback), PAGE_SIZE) ?? null
+}
+
+function readInitialView() {
+  const { view, state } = readInitialUrl()
+  const stored: LanguageSelection = {
+    queryLanguages: readStoredQueryLanguages(),
+    displayLanguages: readStoredDisplayLanguages(),
+  }
+  return {
+    view: resolveUrlView(view, stored),
+    state,
+    previousQuery:
+      view.kind === 'context' ? previousQueryFrom(state, stored) : null,
+  }
+}
+
+const contextView = (
+  item: HighlightItem,
+  displayLanguages: string[],
+): ResolvedUrlView => ({
+  kind: 'context',
+  sheet: item.sheet,
+  index: item.index,
+  displayLanguages,
+})
+
+export default function App() {
+  const [initial] = useState(readInitialView)
+  const initialView = initial.view
+  const [keywordInput, setKeywordInput] = useState(
+    initialView.kind === 'search' ? initialView.keyword : '',
+  )
+  const [advanced, setAdvanced] = useState(
+    initialView.kind === 'search' && initialView.advanced,
+  )
+  const [highlightItem, setHighlightItem] = useState<HighlightItem | null>(
+    initialView.kind === 'context'
+      ? { sheet: initialView.sheet, index: initialView.index }
+      : null,
+  )
+  const [previousQuery, setPreviousQuery] = useState<ISearchQuery | null>(
+    initial.previousQuery,
+  )
+
+  const search = useSearch(viewToQuery(initialView, PAGE_SIZE))
   const isMobile = useIsMobile()
 
   // The results header sticks just under the field, whose height changes with the back button
@@ -80,38 +146,106 @@ export default function App() {
     return () => observer.disconnect()
   }, [])
 
+  const writeSearch = (
+    keyword: IKeywordProps,
+    displayLanguages: string[],
+    mode: 'push' | 'replace',
+    state?: UrlHistoryState,
+  ) => {
+    url.write(
+      keyword.keyword.trim()
+        ? searchView(keyword, displayLanguages)
+        : { kind: 'home' },
+      mode,
+      state,
+    )
+  }
+
   const handleLanguageChange = ({
     queryLanguages,
     displayLanguages,
     reason,
   }: LanguageChange) => {
-    if (!reasonNeedsRefetch(reason)) return
-    if (keywordInput) {
-      search.setSearch({
-        keyword: {
-          keyword: keywordInput,
-          page: 1,
-          pageSize: PAGE_SIZE,
-          languages: queryLanguages,
-          displayLanguages,
-          advanced,
-        },
-      })
+    if (reason === 'restore') return
+    const file = search.query?.file
+    if (!reasonNeedsRefetch(reason)) {
+      // The columns are part of the link even though nothing has to be fetched for them.
+      const submitted = search.query?.keyword
+      if (submitted) writeSearch(submitted, displayLanguages, 'replace')
+      else if (file && highlightItem) {
+        url.write(contextView(highlightItem, displayLanguages), 'replace')
+      }
+      return
     }
-    if (search.query?.file) {
+    if (keywordInput) {
+      const keyword: IKeywordProps = {
+        keyword: keywordInput,
+        page: 1,
+        pageSize: PAGE_SIZE,
+        languages: queryLanguages,
+        displayLanguages,
+        advanced,
+      }
+      // A pending search still carries the languages from before this change.
+      debouncedSetSearch.cancel()
+      search.setSearch({ keyword })
+      writeSearch(keyword, displayLanguages, 'replace')
+    } else if (file) {
       search.setSearch({
-        file: { ...search.query.file, displayLanguages },
+        file: { ...file, displayLanguages },
       })
+      if (highlightItem) {
+        url.write(contextView(highlightItem, displayLanguages), 'replace')
+      }
     }
   }
 
-  const languages = useLanguageSelection({ onChange: handleLanguageChange })
+  const languages = useLanguageSelection({
+    onChange: handleLanguageChange,
+    initial: initialView.kind === 'home' ? undefined : initialView,
+  })
   const { queryLanguages, displayLanguages } = languages
 
   const debouncedSetSearch = useDebouncedCallback((q: ISearchQuery) => {
     setHighlightItem(null)
     search.setSearch(q)
+    // Typing refines the one search rather than starting another, so it replaces the entry.
+    if (q.keyword) {
+      writeSearch(
+        q.keyword,
+        q.keyword.displayLanguages ?? displayLanguages,
+        'replace',
+        {},
+      )
+    }
   }, 400)
+
+  const handlePop = (view: UrlView, state: UrlHistoryState) => {
+    // Otherwise a search typed before going back fires afterwards and writes itself over it.
+    debouncedSetSearch.cancel()
+    const current = { queryLanguages, displayLanguages }
+    const resolved = resolveUrlView(view, current)
+    if (view.kind !== 'home') languages.restore(view)
+    setKeywordInput(resolved.kind === 'search' ? resolved.keyword : '')
+    if (resolved.kind === 'search') setAdvanced(resolved.advanced)
+    setHighlightItem(
+      resolved.kind === 'context'
+        ? { sheet: resolved.sheet, index: resolved.index }
+        : null,
+    )
+    setPreviousQuery(
+      resolved.kind === 'context' ? previousQueryFrom(state, current) : null,
+    )
+    search.setSearch(viewToQuery(resolved, PAGE_SIZE))
+  }
+
+  const url = useUrlHistory(handlePop)
+
+  // Rewrites a hand-made or partial link into the one the page now shows, so that copying the
+  // address bar reproduces it exactly.
+  useEffect(() => {
+    url.write(initial.view, 'replace', initial.state)
+  }, [url, initial])
 
   const handleKeywordInputUpdate = (keyword: string) => {
     setKeywordInput(keyword)
@@ -133,50 +267,63 @@ export default function App() {
     setAdvanced(newAdvanced)
     // The same text reads differently in the other mode, so search it again.
     if (keywordInput) {
-      search.setSearch({
-        keyword: {
-          keyword: keywordInput,
-          page: 1,
-          pageSize: PAGE_SIZE,
-          languages: queryLanguages,
-          displayLanguages,
-          advanced: newAdvanced,
-        },
-      })
+      const keyword: IKeywordProps = {
+        keyword: keywordInput,
+        page: 1,
+        pageSize: PAGE_SIZE,
+        languages: queryLanguages,
+        displayLanguages,
+        advanced: newAdvanced,
+      }
+      search.setSearch({ keyword })
+      writeSearch(keyword, displayLanguages, 'replace')
     }
   }
 
   const handleContextClick = (item: StringItem) => {
-    if (keywordInput) {
-      setPreviousQuery(search.query || null)
-      setKeywordInput('')
-    }
+    debouncedSetSearch.cancel()
+    const submitted = search.query?.keyword
+    // The columns go back as they are now, not as they were when that search was sent.
+    const back = submitted
+      ? { ...submitted, displayLanguages }
+      : previousQuery?.keyword
+    if (submitted) setPreviousQuery({ keyword: back })
+    setKeywordInput('')
 
     setHighlightItem(item)
 
-    const index = item.index
-    search.setSearch({
-      file: {
-        sheet: item.sheet,
-        indexLower: Math.max(0, index - 20),
-        indexHigher: index + 20,
-        displayLanguages,
-      },
+    search.setSearch(
+      viewToQuery(contextView(item, displayLanguages), PAGE_SIZE),
+    )
+    url.write(contextView(item, displayLanguages), 'push', {
+      previousSearch: back
+        ? formatUrlView(
+            searchView(back, back.displayLanguages ?? displayLanguages),
+          )
+        : undefined,
     })
   }
 
   const handleBackClick = () => {
-    if (previousQuery) {
+    const keyword = previousQuery?.keyword
+    if (keyword) {
       search.setSearch(previousQuery)
       setPreviousQuery(null)
-      setKeywordInput(previousQuery.keyword?.keyword || '')
-      setAdvanced(previousQuery.keyword?.advanced ?? false)
+      setKeywordInput(keyword.keyword)
+      setAdvanced(keyword.advanced ?? false)
       languages.restore({
-        queryLanguages: previousQuery.keyword?.languages?.length
-          ? previousQuery.keyword.languages
+        queryLanguages: keyword.languages.length
+          ? keyword.languages
           : undefined,
-        displayLanguages: previousQuery.keyword?.displayLanguages,
+        displayLanguages: keyword.displayLanguages,
       })
+      // A view change like entering the context was, so the browser's back returns to it.
+      writeSearch(
+        keyword,
+        keyword.displayLanguages ?? displayLanguages,
+        'push',
+        {},
+      )
     }
   }
 
@@ -202,6 +349,8 @@ export default function App() {
 
   const handlePageChange = (page: number) => {
     search.setPage(page)
+    const submitted = search.query?.keyword
+    if (submitted) writeSearch({ ...submitted, page }, displayLanguages, 'push')
   }
 
   const pager = showPager && (
