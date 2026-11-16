@@ -128,32 +128,35 @@ func TestSearchKeepsSingleLanguageOrderForNonLatinQueries(t *testing.T) {
 	}
 }
 
-func TestIsNonLatinQuery(t *testing.T) {
+func TestScriptOf(t *testing.T) {
 	cases := []struct {
 		query string
-		want  bool
+		want  queryScript
 	}{
-		{"师傅大人", true},
-		{"大爆発", true},
-		{"街人", true},
-		{"オニオンスープ", true}, // the prolonged sound mark ー is Common script, not Katakana
-		{"ー", true},
-		{"한국어", true},
-		{"onion", false},
-		{"Zwiebel", false},
-		{"Fräulein", false}, // ä is Latin
-		{"café", false},     // é is Latin
-		{"wizard 茄子", false},
-		{"茄子 wizard", false},
-		{"123", false},
-		{"!!!", false},
-		{"", false},
-		{"   ", false},
+		{"师傅大人", nonLatinScript},
+		{"大爆発", nonLatinScript},
+		{"街人", nonLatinScript},
+		{"オニオンスープ", nonLatinScript}, // the prolonged sound mark ー is Common script, not Katakana
+		{"ー", nonLatinScript},
+		{"한국어", nonLatinScript},
+		{"onion", latinScript},
+		{"Zwiebel", latinScript},
+		{"Fräulein", latinScript}, // ä is Latin
+		{"café", latinScript},     // é is Latin
+		{"But how?", latinScript},
+		{"Lv. 50", latinScript},
+		{"wizard 茄子", mixedScript},
+		{"茄子 wizard", mixedScript},
+		{"Aランク", mixedScript},
+		{"123", mixedScript},
+		{"!!!", mixedScript},
+		{"", mixedScript},
+		{"   ", mixedScript},
 	}
 
 	for _, tc := range cases {
-		if got := isNonLatinQuery(tc.query); got != tc.want {
-			t.Errorf("isNonLatinQuery(%q) = %v, want %v", tc.query, got, tc.want)
+		if got := scriptOf(tc.query); got != tc.want {
+			t.Errorf("scriptOf(%q) = %v, want %v", tc.query, got, tc.want)
 		}
 	}
 }
@@ -191,6 +194,156 @@ func TestItemIndexMappingAnalyzers(t *testing.T) {
 	for _, lang := range []string{"en", "de", "fr"} {
 		if usesCJKAnalyzer(lang) {
 			t.Errorf("usesCJKAnalyzer(%q) = true", lang)
+		}
+	}
+}
+
+// Rows whose CJK columns hold English nobody translated, the way the corpus's credits and
+// debug strings do, and two rows where a Latin letter is part of a Japanese name.
+func latinInCJKFixture() []*Item {
+	return []*Item{
+		{Sheet: "Addon", RowID: "1", Index: 0, Values: map[string]string{
+			"chs": "But how could it be?", "tc": "But how could it be?",
+			"en": "But how could it be?", "ja": "But how could it be?",
+		}},
+		{Sheet: "Addon", RowID: "2", Index: 1, Values: map[string]string{
+			"chs": "时候到了，出发吧。", "tc": "時候到了，出發吧。",
+			"en": "Now the time has come to depart.", "ja": "Now the time has come to depart.",
+		}},
+		{Sheet: "Rank", RowID: "1", Index: 0, Values: map[string]string{
+			"chs": "A级", "tc": "A級", "en": "Rank A", "ja": "Aランク",
+		}},
+		{Sheet: "Rank", RowID: "2", Index: 1, Values: map[string]string{
+			"chs": "B级", "tc": "B級", "en": "Rank B", "ja": "Bランク",
+		}},
+		{Sheet: "Item", RowID: "1", Index: 0, Values: map[string]string{
+			"chs": "洋葱", "tc": "洋蔥", "en": "onion", "ja": "オニオン",
+		}},
+	}
+}
+
+func newLatinInCJKStore(t *testing.T) *Store {
+	t.Helper()
+
+	idx, err := bleve.NewMemOnly(buildItemIndexMapping())
+	if err != nil {
+		t.Fatalf("create in-memory index: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := idx.Close(); err != nil {
+			t.Errorf("close index: %v", err)
+		}
+	})
+	if err := indexItems(idx, latinInCJKFixture()); err != nil {
+		t.Fatalf("index items: %v", err)
+	}
+	return &Store{index: idx}
+}
+
+// A query the en column has no term for has none in any other column either, whichever
+// languages are searched and in either mode. It is also what the UI's zero-result probe
+// asks each language alone, so a match here would offer to switch to that language.
+func TestSearchOfOnlyStopWordsFindsNothingInAnyColumn(t *testing.T) {
+	st := newLatinInCJKStore(t)
+
+	for _, langs := range [][]string{{"en"}, {"chs"}, {"ja"}, {"en", "chs", "ja"}, {"ja", "chs", "tc"}} {
+		for _, q := range []string{"But how", "but how could it be", `"but how"`} {
+			plain, err := st.Search(t.Context(), q, langs, SheetFilter{}, 0, 10, scriptFields)
+			if err != nil {
+				t.Fatalf("search %q in %v: %v", q, langs, err)
+			}
+			if plain.Total != 0 {
+				t.Errorf("search %q in %v = %v, want nothing", q, langs, rowIDsOf(plain.Items))
+			}
+
+			advanced, err := st.AdvancedSearch(t.Context(), q, langs, SheetFilter{}, 0, 10, scriptFields)
+			if err != nil {
+				t.Fatalf("advanced search %q in %v: %v", q, langs, err)
+			}
+			if advanced.Total != 0 {
+				t.Errorf("advanced search %q in %v = %v, want nothing", q, langs, rowIDsOf(advanced.Items))
+			}
+		}
+	}
+}
+
+// Dropping the stop words leaves the rest of the query matching untranslated English as
+// before, and none of them are marked.
+func TestSearchFindsUntranslatedEnglishByItsOtherWords(t *testing.T) {
+	st := newLatinInCJKStore(t)
+
+	for _, langs := range [][]string{{"ja"}, {"en", "ja"}, {"en"}} {
+		result, err := st.Search(t.Context(), "the depart", langs, SheetFilter{}, 0, 10, scriptFields)
+		if err != nil {
+			t.Fatalf("search in %v: %v", langs, err)
+		}
+		if got := rowIDsOf(result.Items); strings.Join(got, " ") != "Addon#2" {
+			t.Fatalf("search in %v = %v, want Addon#2 alone", langs, got)
+		}
+
+		// en alone leaves ja to the display fragments; the others search it.
+		highlight := result.Items[0].Highlights["ja"]
+		if !strings.Contains(highlight, "<mark>depart</mark>") {
+			t.Errorf("search in %v: highlights[ja] = %q, want depart marked", langs, highlight)
+		}
+		if strings.Contains(highlight, "<mark>the</mark>") {
+			t.Errorf("search in %v: highlights[ja] = %q, marks a stop word", langs, highlight)
+		}
+	}
+}
+
+// A Latin letter beside kana is part of a Japanese name, and the A of Aランク is what
+// tells it from Bランク, stop word or not.
+func TestSearchKeepsStopWordsInQueriesWithOtherScripts(t *testing.T) {
+	st := newLatinInCJKStore(t)
+
+	for _, langs := range [][]string{{"ja"}, {"ja", "chs", "en"}} {
+		q := parseSearchQuery("Aランク", langs, SheetFilter{})
+		a, b := scoreOf(t, st, q, "Rank@1"), scoreOf(t, st, q, "Rank@2")
+		if b <= 0 || a <= b {
+			t.Errorf("search in %v scored Aランク %v and Bランク %v, want both matched and A ahead",
+				langs, a, b)
+		}
+	}
+}
+
+// The analyzer is the CJK columns' own with the stop list after it, so everything else
+// it does to a query, such as folding full-width letters, still agrees with the index.
+func TestLatinInCJKAnalyzerIsTheCJKAnalyzerWithoutStopWords(t *testing.T) {
+	m, ok := buildItemIndexMapping().(*mapping.IndexMappingImpl)
+	if !ok {
+		t.Fatalf("mapping type = %T", buildItemIndexMapping())
+	}
+	analyzer := m.AnalyzerNamed(latinInCJKAnalyzer)
+	if analyzer == nil {
+		t.Fatalf("no analyzer named %s", latinInCJKAnalyzer)
+	}
+
+	var got []string
+	for _, token := range analyzer.Analyze([]byte("But how ＤＥＰＡＲＴ, the Lalafell's")) {
+		got = append(got, string(token.Term))
+	}
+	if want := []string{"depart", "lalafell's"}; strings.Join(got, " ") != strings.Join(want, " ") {
+		t.Errorf("tokens = %q, want %q", got, want)
+	}
+}
+
+func TestQueryAnalyzer(t *testing.T) {
+	for _, lang := range cjkAnalyzedLanguages {
+		if got := queryAnalyzer(lang, latinScript); got != latinInCJKAnalyzer {
+			t.Errorf("queryAnalyzer(%s, latin) = %q, want %q", lang, got, latinInCJKAnalyzer)
+		}
+		for _, script := range []queryScript{mixedScript, nonLatinScript} {
+			if got := queryAnalyzer(lang, script); got != "" {
+				t.Errorf("queryAnalyzer(%s, %v) = %q, want the field's own", lang, script, got)
+			}
+		}
+	}
+	for _, lang := range []string{"en", "de", "fr"} {
+		for _, script := range []queryScript{mixedScript, latinScript, nonLatinScript} {
+			if got := queryAnalyzer(lang, script); got != "" {
+				t.Errorf("queryAnalyzer(%s, %v) = %q, want the field's own", lang, script, got)
+			}
 		}
 	}
 }

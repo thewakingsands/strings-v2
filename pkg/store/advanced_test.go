@@ -179,7 +179,7 @@ func TestParseAdvancedQueryWeightsLanguagesLikePlainSearch(t *testing.T) {
 	for i, disjunct := range dismax.disjuncts {
 		// The query's own ^2 times the weight parseSearchQuery would give this language,
 		// which for a CJK only query includes damping the Latin language.
-		want := 2 * languageBoost(i, langs[i], true)
+		want := 2 * languageBoost(i, langs[i], nonLatinScript)
 		if got := disjunct.(query.BoostableQuery).Boost(); got != want {
 			t.Errorf("%s boost = %v, want %v", langs[i], got, want)
 		}

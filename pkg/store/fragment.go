@@ -60,15 +60,20 @@ func termLocations(analyzer analysis.Analyzer, fold func(string) string, q, text
 	return locations
 }
 
-// analyzerFor returns the analyzer the index actually uses for a field.
+// analyzerFor returns the analyzer a query in script is matched with in lang, which is
+// the one the index uses for that field unless queryAnalyzer says otherwise.
 //
 // Taken from the index's own mapping rather than buildItemIndexMapping so that a query is
 // always analyzed the way the data was, even if the code's mapping has moved on.
-func (s *Store) analyzerFor(m *mapping.IndexMappingImpl, lang string) analysis.Analyzer {
+func (s *Store) analyzerFor(m *mapping.IndexMappingImpl, lang string, script queryScript) analysis.Analyzer {
 	if m == nil {
 		return nil
 	}
-	return m.AnalyzerNamed(m.AnalyzerNameForPath(lang))
+	name := queryAnalyzer(lang, script)
+	if name == "" {
+		name = m.AnalyzerNameForPath(lang)
+	}
+	return m.AnalyzerNamed(name)
 }
 
 // addDisplayFragments gives the requested languages that took no part in the search a
@@ -103,9 +108,10 @@ func (s *Store) addDisplayFragments(hits search.DocumentMatchCollection, q strin
 
 	indexMapping, _ := s.index.Mapping().(*mapping.IndexMappingImpl)
 
+	script := scriptOf(q)
 	analyzers := make(map[string]analysis.Analyzer, len(displayOnly))
 	for _, lang := range displayOnly {
-		analyzers[lang] = s.analyzerFor(indexMapping, lang)
+		analyzers[lang] = s.analyzerFor(indexMapping, lang, script)
 	}
 
 	for _, hit := range hits {

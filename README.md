@@ -152,8 +152,8 @@ curl "http://127.0.0.1:8080/api/search?lang=chs,en,ja&sheet=Item&q=onion"
 
 - The order is the preference order. `lang=chs,en,ja` ranks a row that matched in `chs`
   above one that matched only in `en`, which in turn ranks above one that matched only
-  in `ja`, the same as boosting `chs^3 en^2 ja^1`. A single language is scored exactly
-  as it was before this parameter accepted lists.
+  in `ja`, the same as boosting `chs^3 en^2 ja^1`. With a single language there is no
+  order to apply, and the result is that column's own ranking.
 - Blank segments and repeats are ignored, so `lang=chs,,en` and `lang=chs,chs,en` both
   mean `lang=chs,en`.
 - An unknown code is rejected with `400 invalid lang: <code>`, matching how `fields`
@@ -168,6 +168,14 @@ it `カタカナ`, and the reverse. Each part of the query counts in full where 
 the script it was typed in and for less where it matches only the other one, so the
 spelling typed ranks first. `meta.total` grows accordingly. A query with no kana in it
 scores exactly as it did before. The other languages are not folded.
+
+English stop words such as `the`, `but` and `how` never match in `en`, whose analyzer
+drops them, and a query written only in Latin letters skips them in `chs`, `tc`, `ja`
+and `ko` too, where the only English is text nobody translated. So `q=But how` finds
+nothing in any of those five, and `q=the onion` matches there as `onion` alone. A query
+with any other script in it, such as `Aランク`, keeps every word, since the Latin letters
+then belong to a name. `de` and `fr` drop their own languages' stop words, not English
+ones: `but` is a French word.
 
 `fields` chooses which language columns come back and defaults to `chs,tc,en,ja`. It is
 independent of `lang`: searching a language that `fields` leaves out is allowed, and
@@ -279,10 +287,13 @@ advanced query is scored like any other clause, and is limited.
   query matched has its matches wrapped in `<mark>`; one it did not match is simply the
   start of the value. Both are cut by the same fragmenter, so all the columns of a row
   come back a comparable length rather than one snippet beside thousands of characters.
-- Matching for a language outside `lang` runs that language's own analyzer, so it agrees
-  with the index: quotes are separators, English is stemmed, and CJK is cut into bigrams.
-  A query typed with `"Software"` therefore highlights a value stored with `“Software”`,
-  and a `ja` column marks a word in either kana script, as the search would match it.
+- In a plain search, a language outside `lang` is matched the way searching it would
+  match, so it agrees with the index: quotes are separators, English is stemmed, CJK is
+  cut into bigrams, and English stop words are skipped as described above. A query typed
+  with `"Software"` therefore highlights a value stored with `“Software”`, and a `ja`
+  column marks a word in either kana script, as the search would match it.
+- An advanced query marks only what it searched. A language outside `lang` is marked
+  where a clause names it, as `de:zwiebel` does, and is otherwise the start of its value.
 - `GET /api/items` does no matching and returns no `highlights` at all.
 
 Before this split, `values` carried the truncated snippet for the searched language,

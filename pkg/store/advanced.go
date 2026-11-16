@@ -26,8 +26,8 @@ func parseAdvancedQuery(q string, langs []string, sheet SheetFilter) (query.Quer
 		return nil, fmt.Errorf("invalid query: %w", err)
 	}
 
-	nonLatin := isNonLatinQuery(strings.Join(unfieldedTexts(parsed, nil), " "))
-	textQuery := foldKanaClauses(spreadOverLanguages(parsed, langs, nonLatin))
+	script := scriptOf(strings.Join(unfieldedTexts(parsed, nil), " "))
+	textQuery := foldKanaClauses(spreadOverLanguages(parsed, langs, script))
 
 	return sheet.apply(textQuery), nil
 }
@@ -74,23 +74,24 @@ func foldKanaClauses(q query.Query) query.Query {
 }
 
 // spreadOverLanguages replaces every clause of q that names no field with a dis_max of
-// one copy per language, and returns q with those replacements made.
-func spreadOverLanguages(q query.Query, langs []string, nonLatin bool) query.Query {
+// one copy per language, and returns q with those replacements made. script is that of
+// all such clauses together, as scriptOf reads it.
+func spreadOverLanguages(q query.Query, langs []string, script queryScript) query.Query {
 	switch q := q.(type) {
 	case *query.BooleanQuery:
-		q.Must = spreadOverLanguages(q.Must, langs, nonLatin)
-		q.Should = spreadOverLanguages(q.Should, langs, nonLatin)
-		q.MustNot = spreadOverLanguages(q.MustNot, langs, nonLatin)
-		q.Filter = spreadOverLanguages(q.Filter, langs, nonLatin)
+		q.Must = spreadOverLanguages(q.Must, langs, script)
+		q.Should = spreadOverLanguages(q.Should, langs, script)
+		q.MustNot = spreadOverLanguages(q.MustNot, langs, script)
+		q.Filter = spreadOverLanguages(q.Filter, langs, script)
 		return q
 	case *query.ConjunctionQuery:
 		for i, conjunct := range q.Conjuncts {
-			q.Conjuncts[i] = spreadOverLanguages(conjunct, langs, nonLatin)
+			q.Conjuncts[i] = spreadOverLanguages(conjunct, langs, script)
 		}
 		return q
 	case *query.DisjunctionQuery:
 		for i, disjunct := range q.Disjuncts {
-			q.Disjuncts[i] = spreadOverLanguages(disjunct, langs, nonLatin)
+			q.Disjuncts[i] = spreadOverLanguages(disjunct, langs, script)
 		}
 		return q
 	case query.FieldableQuery:
@@ -99,7 +100,8 @@ func spreadOverLanguages(q query.Query, langs []string, nonLatin bool) query.Que
 		}
 		disjuncts := make([]query.Query, 0, len(langs))
 		for i, lang := range langs {
-			disjuncts = append(disjuncts, copyForLanguage(q, lang, languageBoost(i, lang, nonLatin)))
+			copied := copyForLanguage(q, lang, languageBoost(i, lang, script))
+			disjuncts = append(disjuncts, withQueryAnalyzer(copied, queryAnalyzer(lang, script)))
 		}
 		if len(disjuncts) == 1 {
 			return disjuncts[0]
@@ -128,6 +130,22 @@ func copyForLanguage(q query.FieldableQuery, lang string, boost float64) query.Q
 		boostable.SetBoost(boostable.Boost() * boost)
 	}
 	return rv
+}
+
+// withQueryAnalyzer has q analyze its text with analyzer, when q is a clause that analyzes
+// its text at all and analyzer is not "". Wildcards, regular expressions and terms are
+// matched as typed, so they are left alone.
+func withQueryAnalyzer(q query.Query, analyzer string) query.Query {
+	if analyzer == "" {
+		return q
+	}
+	switch q := q.(type) {
+	case *query.MatchQuery:
+		q.Analyzer = analyzer
+	case *query.MatchPhraseQuery:
+		q.Analyzer = analyzer
+	}
+	return q
 }
 
 // unfieldedTexts collects the search text of every clause in q that names no field,
