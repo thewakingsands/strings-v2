@@ -125,6 +125,22 @@ const nonNativeScriptBoost = 0.05
 // so this takes nonNativeScriptBoost's value from the middle of that range.
 const latinInCJKBoost = 0.05
 
+// kanaInChineseKoreanBoost damps chs, tc and ko for a query with kana in it, the same
+// problem as latinInCJKBoost from the Japanese side.
+//
+// Kana in those columns is Japanese nobody translated, often a whole line of it. Its
+// bigrams are rare there, so their IDF dwarfs the same bigrams' in ja, and the
+// untranslated copy outscores the row whose ja column holds the line.
+//
+// Measured with the relevance eval on publish-20260728-3b64471, each ja case searching
+// ja, chs and en. Undamped, 12 cases rank below where ja alone puts them, 11 of them
+// behind Japanese left in chs. At 0.7 or 0.8 about half still do; every value from 0.5
+// down to 0.05 leaves only the one written in kanji alone. The cost falls on the 137
+// kana lines that sit in chs or tc and in no ja column, searched with that column
+// first: at 0.5 the worst falls to rank 7, at 0.05 58 of them leave the first 50. So
+// this is the largest value of the flat range rather than its middle.
+const kanaInChineseKoreanBoost = 0.5
+
 // latinInCJKAnalyzer is what a query written in Latin letters alone is matched with in
 // the CJK columns: their own cjk analyzer, followed by the stop list the en column uses.
 //
@@ -212,11 +228,15 @@ func languageBoost(i int, lang string, script queryScript) float64 {
 	if i > 0 {
 		boost = 1 - float64(i)*languageBoostStep
 	}
-	if script == nonLatinScript && !usesCJKAnalyzer(lang) {
+	if (script == nonLatinScript || script == kanaScript) && !usesCJKAnalyzer(lang) {
 		boost *= nonNativeScriptBoost
 	}
 	if script == latinScript && usesCJKAnalyzer(lang) {
 		boost *= latinInCJKBoost
+	}
+	// The kana folded column is ja, the one CJK column where kana is the language's own.
+	if script == kanaScript && usesCJKAnalyzer(lang) && !foldsKana(lang) {
+		boost *= kanaInChineseKoreanBoost
 	}
 	return boost
 }
@@ -226,27 +246,35 @@ func languageBoost(i int, lang string, script queryScript) float64 {
 type queryScript int
 
 const (
-	// mixedScript has letters of both kinds, or none at all.
+	// mixedScript has letters of both kinds, or none at all, and no kana.
 	mixedScript queryScript = iota
 	// latinScript has letters, and every one of them is Latin.
 	latinScript
-	// nonLatinScript has letters and none of them are Latin. Such a query carries no
-	// word an en, de or fr analyzer can recognise, so those fields can only match it a
-	// character at a time.
+	// nonLatinScript has letters and none of them are Latin or kana. Such a query
+	// carries no word an en, de or fr analyzer can recognise, so those fields can only
+	// match it a character at a time.
 	nonLatinScript
+	// kanaScript has a hiragana or katakana letter, which makes it Japanese whatever
+	// else it holds: the ＨＰ of ＨＰを回復 and the A of Aランク are part of the Japanese,
+	// not English words. A query of kanji alone has no such mark and stays nonLatinScript.
+	kanaScript
 )
 
 // scriptOf reports the script q is written in. German ü and French é are Latin letters,
-// and digits or punctuation say nothing either way.
+// ー and ・ are not kana since chs, tc and ko write them too, and digits or punctuation
+// say nothing either way.
 func scriptOf(q string) queryScript {
 	latin, other := false, false
 	for _, r := range q {
 		if !unicode.IsLetter(r) {
 			continue
 		}
-		if unicode.Is(unicode.Latin, r) {
+		switch {
+		case unicode.In(r, unicode.Hiragana, unicode.Katakana):
+			return kanaScript
+		case unicode.Is(unicode.Latin, r):
 			latin = true
-		} else {
+		default:
 			other = true
 		}
 	}

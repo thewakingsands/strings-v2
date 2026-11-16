@@ -137,9 +137,14 @@ func TestScriptOf(t *testing.T) {
 		{"师傅大人", nonLatinScript},
 		{"大爆発", nonLatinScript},
 		{"街人", nonLatinScript},
-		{"オニオンスープ", nonLatinScript}, // the prolonged sound mark ー is Common script, not Katakana
-		{"ー", nonLatinScript},
+		{"ー", nonLatinScript}, // the prolonged sound mark is Common script, not Katakana
 		{"한국어", nonLatinScript},
+		{"オニオンスープ", kanaScript},
+		{"ことになった", kanaScript},
+		{"ｵﾆｵﾝ", kanaScript},
+		{"Aランク", kanaScript},
+		{"味方のＨＰを回復する。", kanaScript},
+		{"wizard の茄子", kanaScript},
 		{"onion", latinScript},
 		{"Zwiebel", latinScript},
 		{"Fräulein", latinScript}, // ä is Latin
@@ -148,7 +153,7 @@ func TestScriptOf(t *testing.T) {
 		{"Lv. 50", latinScript},
 		{"wizard 茄子", mixedScript},
 		{"茄子 wizard", mixedScript},
-		{"Aランク", mixedScript},
+		{"・", mixedScript},
 		{"123", mixedScript},
 		{"!!!", mixedScript},
 		{"", mixedScript},
@@ -334,14 +339,14 @@ func TestQueryAnalyzer(t *testing.T) {
 		if got := queryAnalyzer(lang, latinScript); got != latinInCJKAnalyzer {
 			t.Errorf("queryAnalyzer(%s, latin) = %q, want %q", lang, got, latinInCJKAnalyzer)
 		}
-		for _, script := range []queryScript{mixedScript, nonLatinScript} {
+		for _, script := range []queryScript{mixedScript, nonLatinScript, kanaScript} {
 			if got := queryAnalyzer(lang, script); got != "" {
 				t.Errorf("queryAnalyzer(%s, %v) = %q, want the field's own", lang, script, got)
 			}
 		}
 	}
 	for _, lang := range []string{"en", "de", "fr"} {
-		for _, script := range []queryScript{mixedScript, latinScript, nonLatinScript} {
+		for _, script := range []queryScript{mixedScript, latinScript, nonLatinScript, kanaScript} {
 			if got := queryAnalyzer(lang, script); got != "" {
 				t.Errorf("queryAnalyzer(%s, %v) = %q, want the field's own", lang, script, got)
 			}
@@ -419,6 +424,128 @@ func TestSearchKeepsSingleLanguageOrderForLatinQueries(t *testing.T) {
 		if got.Total != control.Total || strings.Join(gotIDs, " ") != strings.Join(wantIDs, " ") {
 			t.Errorf("search %q = %v (total %d), want %v (total %d)",
 				q, gotIDs, got.Total, wantIDs, control.Total)
+		}
+	}
+}
+
+// untranslated fills every column but ja with the Japanese line, the way rows nobody
+// translated reach the corpus.
+func untranslated(ja string) map[string]string {
+	values := map[string]string{}
+	for _, lang := range []string{"chs", "tc", "ko", "en", "de", "fr", "ja"} {
+		values[lang] = ja
+	}
+	return values
+}
+
+// The shape kanaInChineseKoreanBoost answers: the line a query comes from sits in the ja
+// column of one row, while another row kept a Japanese line in every column and shares
+// its kana. Those bigrams are common in ja and rare everywhere else, so undamped, the
+// untranslated copy outscores the line. The second pair puts ＨＰ in the query, whose
+// Latin letters must not exempt en, de and fr from their damping.
+func untranslatedJapaneseFixture() []*Item {
+	items := []*Item{
+		{Sheet: "Quest", RowID: "1", Index: 0, Values: map[string]string{
+			"chs": "决定尝试模仿魔物的咆哮。", "tc": "決定嘗試模仿魔物的咆哮。", "ko": "마물의 포효를 흉내 내기로 했다.",
+			"en": "We resolved to imitate the beast's roar.", "de": "Wir ahmen das Brüllen nach.",
+			"fr": "Nous imiterons le rugissement.", "ja": "魔物の咆哮を試みることになった。",
+		}},
+		{Sheet: "Leve", RowID: "1", Index: 0, Values: untranslated("掃除することになった")},
+		{Sheet: "Action", RowID: "1", Index: 0, Values: map[string]string{
+			"chs": "恢复目标的体力。", "tc": "恢復目標的體力。", "ko": "대상의 HP를 회복한다.",
+			"en": "Restores target's HP.", "de": "Stellt LP des Ziels wieder her.",
+			"fr": "Restaure les PV de la cible.", "ja": "味方のＨＰを回復する。",
+		}},
+		{Sheet: "Status", RowID: "1", Index: 0, Values: untranslated("ＨＰを回復する")},
+	}
+	for i, ja := range []string{"旅に出ることになった。", "店を継ぐことになった。", "村を守ることになった。",
+		"城へ行くことになった。", "海を渡ることになった。", "森を調べることになった。",
+		"ＨＰを回復する薬。", "毎秒ＨＰを回復する。", "仲間のＨＰを回復する。"} {
+		items = append(items, &Item{Sheet: "Balloon", RowID: fmt.Sprint(i), Index: uint32(i), Values: map[string]string{
+			"chs": "旅途还在继续", "tc": "旅途還在繼續", "ko": "여행은 계속된다", "en": "The journey goes on.",
+			"de": "Die Reise geht weiter.", "fr": "Le voyage continue.", "ja": ja,
+		}})
+	}
+	return items
+}
+
+var untranslatedJapaneseFields = []string{"chs", "tc", "ko", "en", "de", "fr", "ja"}
+
+func TestSearchRanksTheLineAboveJapaneseLeftUntranslated(t *testing.T) {
+	st := newScorchTestStore(t, untranslatedJapaneseFixture())
+
+	cases := []struct {
+		q          string
+		line, copy [2]string
+	}{
+		{"試みることになった", [2]string{"Quest", "1"}, [2]string{"Leve", "1"}},
+		{"味方のＨＰを回復する", [2]string{"Action", "1"}, [2]string{"Status", "1"}},
+	}
+	for _, tc := range cases {
+		for _, langs := range [][]string{
+			{"ja", "chs", "en"}, {"chs", "en", "ja"}, {"ja", "tc", "ko"}, {"ko", "ja"},
+			{"ja", "en", "de", "fr"}, untranslatedJapaneseFields,
+		} {
+			result, err := st.Search(t.Context(), tc.q, langs, SheetFilter{}, 0, 20, untranslatedJapaneseFields)
+			if err != nil {
+				t.Fatalf("search %q in %v: %v", tc.q, langs, err)
+			}
+			line := rankOf(result.Items, tc.line[0], tc.line[1])
+			copied := rankOf(result.Items, tc.copy[0], tc.copy[1])
+			if line == -1 || copied == -1 || copied < line {
+				t.Errorf("search %q in %v = %v, want %s#%s above %s#%s",
+					tc.q, langs, rowIDsOf(result.Items), tc.line[0], tc.line[1], tc.copy[0], tc.copy[1])
+			}
+		}
+	}
+}
+
+// Japanese left untranslated in a Chinese or Korean column stays findable by searching
+// that column alone, in the same order as with no damping at all.
+func TestSearchKeepsSingleLanguageOrderForKanaQueries(t *testing.T) {
+	st := newScorchTestStore(t, untranslatedJapaneseFixture())
+
+	for _, lang := range []string{"chs", "tc", "ko"} {
+		for _, q := range []string{"ことになった", "味方のＨＰを回復する"} {
+			got, err := st.Search(t.Context(), q, []string{lang}, SheetFilter{}, 0, 100, untranslatedJapaneseFields)
+			if err != nil {
+				t.Fatalf("search %q in %s: %v", q, lang, err)
+			}
+
+			// Control: the same query with no boost at all.
+			plain := bleve.NewMatchQuery(q)
+			plain.SetField(lang)
+			request := bleve.NewSearchRequestOptions(plain, 100, 0, false)
+			control, err := st.index.Search(request)
+			if err != nil {
+				t.Fatalf("control search %q in %s: %v", q, lang, err)
+			}
+
+			gotIDs := make([]string, 0, len(got.Items))
+			for _, item := range got.Items {
+				gotIDs = append(gotIDs, item.Sheet+"@"+item.RowID)
+			}
+			wantIDs := make([]string, 0, len(control.Hits))
+			for _, hit := range control.Hits {
+				wantIDs = append(wantIDs, hit.ID)
+			}
+			if got.Total != control.Total || strings.Join(gotIDs, " ") != strings.Join(wantIDs, " ") {
+				t.Errorf("search %q in %s = %v (total %d), want %v (total %d)",
+					q, lang, gotIDs, got.Total, wantIDs, control.Total)
+			}
+		}
+	}
+}
+
+// ja is where kana belongs, so it is the one CJK column a kana query leaves at full weight.
+func TestLanguageBoostForKanaQueries(t *testing.T) {
+	want := map[string]float64{
+		"ja": 1, "chs": kanaInChineseKoreanBoost, "tc": kanaInChineseKoreanBoost, "ko": kanaInChineseKoreanBoost,
+		"en": nonNativeScriptBoost, "de": nonNativeScriptBoost, "fr": nonNativeScriptBoost,
+	}
+	for lang, boost := range want {
+		if got := languageBoost(0, lang, kanaScript); got != boost {
+			t.Errorf("languageBoost(0, %s, kana) = %v, want %v", lang, got, boost)
 		}
 	}
 }

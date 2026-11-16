@@ -157,9 +157,14 @@ curl "http://127.0.0.1:8080/api/search?lang=chs,en,ja&sheet=Item&q=onion"
 - A column that can only match the query through text nobody translated counts for a
   twentieth, wherever it sits in the order: `chs`, `tc`, `ja` and `ko` for a query
   written only in Latin letters, and `en`, `de` and `fr` for one with no Latin letters
-  at all. So `lang=chs,en&q=onion` ranks a row whose `en` column says onion above one
-  whose `chs` column was left in English. Those rows still match, and searching that
-  column alone ranks them as before.
+  at all or with kana in it. So `lang=chs,en&q=onion` ranks a row whose `en` column says
+  onion above one whose `chs` column was left in English. Those rows still match, and
+  searching that column alone ranks them as before.
+- A query with kana in it is Japanese, and `chs`, `tc` and `ko` hold kana only where
+  nobody translated the Japanese, so for such a query they count for half. A row whose
+  `ja` column holds the line then ranks above one whose `chs` column was left in
+  Japanese, whichever of the two languages comes first. A query of kanji alone reads
+  the same in Chinese and Japanese and is weighted by the order alone.
 - Blank segments and repeats are ignored, so `lang=chs,,en` and `lang=chs,chs,en` both
   mean `lang=chs,en`.
 - An unknown code is rejected with `400 invalid lang: <code>`, matching how `fields`
