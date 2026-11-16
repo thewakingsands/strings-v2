@@ -24,7 +24,7 @@ export const defaultQueryLanguages = ['chs']
 export const defaultDisplayLanguages = ['chs', 'tc', 'en', 'ja'] as const
 
 /**
- * The chips rows and the display language menu all list the picked languages first, in whatever
+ * Both language lists put the picked languages first, in whatever
  * order that group carries — priority for the query languages, column order for the display ones —
  * and everything else after them in the fixed languageMap order.
  */

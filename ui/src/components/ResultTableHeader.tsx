@@ -1,9 +1,9 @@
 import { Button, Colors, Popover } from '@blueprintjs/core'
 import styled from '@emotion/styled'
-import { useState } from 'react'
 import { languageMap, languageOptions } from '@/utils/language'
+import { usePointerReorder } from '@/utils/usePointerReorder'
 import { MOBILE_BREAKPOINT } from './breakpoints'
-import { DisplayLanguageMenu } from './DisplayLanguageMenu'
+import { LanguageList } from './LanguageList'
 
 const ADD_SLOT_WIDTH = 34
 const HIDE_BUTTON_SPACE = 24
@@ -16,22 +16,26 @@ const HeaderRow = styled.div({
   fontWeight: 600,
   fontSize: 12,
   color: '#5c7080',
-  // Anchors the ＋, which floats over the right edge instead of taking a column of its own.
-  position: 'relative',
+  // Sticks under the search field, whose height App measures into the variable. It must stay
+  // opaque: the rows scroll underneath it.
+  position: 'sticky',
+  top: 'var(--results-header-top, 50px)',
+  zIndex: 15,
   [`@media (max-width: ${MOBILE_BREAKPOINT - 1}px)`]: {
     display: 'none',
   },
 })
 
 const HeaderCellPosition = styled.div({
+  order: -1,
   flex: '0 0 120px',
   minWidth: 0,
   padding: '10px 12px',
   borderRight: '1px solid #e1e8ed',
 })
 
-const HeaderCellLang = styled.div<{ $last: boolean; $dropBefore: boolean }>(
-  ({ $last, $dropBefore }) => ({
+const HeaderCellLang = styled.div<{ $last: boolean; $dragging: boolean }>(
+  ({ $last, $dragging }) => ({
     flex: 1,
     minWidth: 0,
     padding: '10px 12px',
@@ -42,16 +46,10 @@ const HeaderCellLang = styled.div<{ $last: boolean; $dropBefore: boolean }>(
     position: 'relative',
     cursor: 'grab',
     userSelect: 'none',
-    ...($dropBefore && {
-      '&::before': {
-        content: '""',
-        position: 'absolute',
-        left: -1,
-        top: 0,
-        bottom: 0,
-        width: 2,
-        backgroundColor: Colors.BLUE3,
-      },
+    ...($dragging && {
+      cursor: 'grabbing',
+      backgroundColor: '#e7effa',
+      color: Colors.BLUE2,
     }),
   }),
 )
@@ -106,6 +104,8 @@ const AddSlot = styled.div({
   placeItems: 'center',
   borderLeft: '1px solid #e1e8ed',
   backgroundColor: '#f7f9fa',
+  // The cells carry an `order`, which also paints them in that order, after this slot.
+  zIndex: 1,
 })
 
 export interface IResultTableHeaderProps {
@@ -121,47 +121,49 @@ export function ResultTableHeader({
   onToggleLanguage,
   onReorderDisplayLanguages,
 }: IResultTableHeaderProps) {
-  const [dragFrom, setDragFrom] = useState<number | null>(null)
-  const [dropAt, setDropAt] = useState<number | null>(null)
+  const { draggingIndex, handleProps } = usePointerReorder({
+    axis: 'x',
+    count: displayLanguages.length,
+    onMove: onReorderDisplayLanguages,
+  })
 
   const canRemove = displayLanguages.length > 1
   const hasHiddenLanguages = displayLanguages.length < languageOptions.length
   const lastIndex = displayLanguages.length - 1
 
-  const endDrag = () => {
-    setDragFrom(null)
-    setDropAt(null)
-  }
+  // Rendered in one fixed DOM order and placed by `order`, as LanguageList does: moving the
+  // node under the pointer mid-drag would drop its pointer capture.
+  const shown = languageOptions
+    .map((option) => option.value)
+    .filter((lang) => displayLanguages.includes(lang))
 
   return (
     <HeaderRow>
       <HeaderCellPosition>位置</HeaderCellPosition>
-      {displayLanguages.map((lang, index) => {
+      {shown.map((lang) => {
+        const index = displayLanguages.indexOf(lang)
+        const props = handleProps(index)
         const isLast = index === lastIndex
         const clearsAddSlot = isLast && hasHiddenLanguages
         const label = languageMap[lang as keyof typeof languageMap] ?? lang
         return (
           <HeaderCellLang
             key={lang}
+            style={{ order: index }}
             $last={isLast}
-            $dropBefore={dropAt === index && dragFrom !== null}
-            draggable
-            onDragStart={(event) => {
-              setDragFrom(index)
-              event.dataTransfer.effectAllowed = 'move'
-              event.dataTransfer.setData('text/plain', lang)
+            $dragging={draggingIndex === index}
+            {...props}
+            // The ✕ sits inside the cell; pressing it hides the column and must not start a drag.
+            onPointerDown={(event) => {
+              if ((event.target as Element).closest('button')) return
+              props.onPointerDown(event)
             }}
-            onDragEnd={endDrag}
-            onDragOver={(event) => {
-              if (dragFrom === null) return
-              event.preventDefault()
-              setDropAt(index)
+            // Arrow keys move the column only from the cell itself, not from the ✕ inside it.
+            onKeyDown={(event) => {
+              if (event.target !== event.currentTarget) return
+              props.onKeyDown(event)
             }}
-            onDrop={(event) => {
-              event.preventDefault()
-              if (dragFrom !== null) onReorderDisplayLanguages(dragFrom, index)
-              endDrag()
-            }}
+            tabIndex={0}
           >
             <HeaderLabel
               $inset={
@@ -190,9 +192,11 @@ export function ResultTableHeader({
           <Popover
             placement="bottom-end"
             content={
-              <DisplayLanguageMenu
-                displayLanguages={displayLanguages}
+              <LanguageList
+                selected={displayLanguages}
                 onToggle={onToggleLanguage}
+                onReorder={onReorderDisplayLanguages}
+                caption="勾上的语言显示为结果的列，上下顺序就是列的左右顺序。"
               />
             }
           >

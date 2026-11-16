@@ -11,10 +11,6 @@ import {
 import { languageMap } from '@/utils/language'
 import { useScrollIntoView } from '../utils/useScrollIntoView'
 import { MOBILE_BREAKPOINT } from './breakpoints'
-import {
-  type IResultTableHeaderProps,
-  ResultTableHeader,
-} from './ResultTableHeader'
 
 const ListContainer = styled.div({
   width: '100%',
@@ -136,15 +132,6 @@ const CellLang = styled.div({
   },
 })
 
-const ScrollableContainer = styled.div({
-  width: '100%',
-  minWidth: 0,
-  overflowX: 'auto',
-  [`@media (max-width: ${MOBILE_BREAKPOINT - 1}px)`]: {
-    overflowX: 'visible',
-  },
-})
-
 const LinkButton = styled.button({
   padding: 0,
   margin: 0,
@@ -194,7 +181,9 @@ function renderCell(
   )
 }
 
-export interface IResultTableProps extends IResultTableHeaderProps {
+export interface IResultTableProps {
+  /** Ordered: the column order on desktop, the line order in a card on mobile. */
+  displayLanguages: string[]
   items: StringItem[]
   onContextButtonClick?: (item: StringItem) => void
   keyword: string
@@ -220,68 +209,60 @@ export function ResultTable(props: IResultTableProps) {
   }
 
   return (
-    <ScrollableContainer>
-      <ListContainer>
-        <ResultTableHeader
-          displayLanguages={displayLanguages}
-          onHideLanguage={props.onHideLanguage}
-          onToggleLanguage={props.onToggleLanguage}
-          onReorderDisplayLanguages={props.onReorderDisplayLanguages}
-        />
-        {items.map((item, idx) => {
-          const isHighlight =
-            item.sheet === props.highlightItem?.sheet &&
-            item.rowId === props.highlightItem?.rowId
-          const rowKey = `${item.sheet}#${item.rowId}`
-          // Only offer the toggle where something is actually out of sight. A short value
-          // is its own fragment, and an /api/items row has no fragment at all.
-          const canExpand = displayLanguages.some((lang) =>
-            isFragmentTruncated(
-              item.highlights?.[lang] ?? '',
-              item.values[lang] ?? '',
-            ),
-          )
-          const isExpanded = canExpand && expanded.has(rowKey)
-          return (
-            <ItemRow
-              key={`${item.sheet}-${item.rowId}-${idx}`}
-              $highlight={isHighlight}
-              data-highlight-row={isHighlight ? 'true' : undefined}
-            >
-              <CellPosition>
-                {item.sheet}#{item.rowId}
-                <br />
-                <LinkButton onClick={() => props.onContextButtonClick?.(item)}>
-                  搜索上下文
-                </LinkButton>
-                {canExpand && (
-                  <ExpandToggle
-                    onClick={() => toggleExpanded(rowKey)}
-                    title={isExpanded ? '收起' : '展开完整文本'}
-                    aria-label={isExpanded ? '收起' : '展开完整文本'}
-                    aria-expanded={isExpanded}
-                  >
-                    <Icon
-                      icon={
-                        isExpanded ? 'double-chevron-up' : 'double-chevron-down'
-                      }
-                      size={12}
-                    />
-                  </ExpandToggle>
-                )}
-              </CellPosition>
-              {displayLanguages.map((lang) => {
-                const label = languageMap[lang as keyof typeof languageMap]
-                return (
-                  <CellLang key={lang} data-label={label}>
-                    <div>{renderCell(item, lang, keyword, isExpanded)}</div>
-                  </CellLang>
-                )
-              })}
-            </ItemRow>
-          )
-        })}
-      </ListContainer>
-    </ScrollableContainer>
+    <ListContainer>
+      {items.map((item, idx) => {
+        const isHighlight =
+          item.sheet === props.highlightItem?.sheet &&
+          item.rowId === props.highlightItem?.rowId
+        const rowKey = `${item.sheet}#${item.rowId}`
+        // Only offer the toggle where something is actually out of sight. A short value
+        // is its own fragment, and an /api/items row has no fragment at all.
+        const canExpand = displayLanguages.some((lang) =>
+          isFragmentTruncated(
+            item.highlights?.[lang] ?? '',
+            item.values[lang] ?? '',
+          ),
+        )
+        const isExpanded = canExpand && expanded.has(rowKey)
+        return (
+          <ItemRow
+            key={`${item.sheet}-${item.rowId}-${idx}`}
+            $highlight={isHighlight}
+            data-highlight-row={isHighlight ? 'true' : undefined}
+          >
+            <CellPosition>
+              {item.sheet}#{item.rowId}
+              <br />
+              <LinkButton onClick={() => props.onContextButtonClick?.(item)}>
+                搜索上下文
+              </LinkButton>
+              {canExpand && (
+                <ExpandToggle
+                  onClick={() => toggleExpanded(rowKey)}
+                  title={isExpanded ? '收起' : '展开完整文本'}
+                  aria-label={isExpanded ? '收起' : '展开完整文本'}
+                  aria-expanded={isExpanded}
+                >
+                  <Icon
+                    icon={
+                      isExpanded ? 'double-chevron-up' : 'double-chevron-down'
+                    }
+                    size={12}
+                  />
+                </ExpandToggle>
+              )}
+            </CellPosition>
+            {displayLanguages.map((lang) => {
+              const label = languageMap[lang as keyof typeof languageMap]
+              return (
+                <CellLang key={lang} data-label={label}>
+                  <div>{renderCell(item, lang, keyword, isExpanded)}</div>
+                </CellLang>
+              )
+            })}
+          </ItemRow>
+        )
+      })}
+    </ListContainer>
   )
 }

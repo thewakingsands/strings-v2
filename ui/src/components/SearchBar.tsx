@@ -1,8 +1,6 @@
 import { Button } from '@blueprintjs/core'
 import styled from '@emotion/styled'
-import { languageOptions } from '@/utils/language'
 import type { ISearchQuery } from '../search/useSearch'
-import { LanguageChips } from './LanguageChips'
 import { type ISearchFieldProps, SearchField } from './SearchField'
 
 const Container = styled.div({
@@ -12,9 +10,6 @@ const Container = styled.div({
 })
 
 const SearchColumn = styled.div({
-  display: 'flex',
-  flexDirection: 'column',
-  gap: '8px',
   flex: 1,
   minWidth: 0,
 })
@@ -22,9 +17,6 @@ const SearchColumn = styled.div({
 export interface ISearchBarProps extends ISearchFieldProps {
   previousQuery?: ISearchQuery
   onBackClicked?: () => void
-  queryLanguages: string[]
-  onToggleQueryLanguage: (code: string) => void
-  onReorderQueryLanguages: (from: number, to: number) => void
 }
 
 export function SearchBar(props: ISearchBarProps) {
@@ -43,20 +35,12 @@ export function SearchBar(props: ISearchBarProps) {
           intent="primary"
         />
       )}
-      {/* The context view has no keyword search, so neither the field nor the languages
-          modifying it belong there. The display languages live on the result table and in
-          the navbar, so that view needs no language control of its own. */}
+      {/* The context view has no keyword search, so neither the field nor the search languages
+          it carries belong there. The display languages sit on top of the results, which that
+          view has too. */}
       {!previousQuery && (
         <SearchColumn>
           <SearchField {...props} />
-          <LanguageChips
-            label="搜索"
-            options={languageOptions}
-            selected={props.queryLanguages}
-            onToggle={props.onToggleQueryLanguage}
-            onReorder={props.onReorderQueryLanguages}
-            showRank
-          />
         </SearchColumn>
       )}
     </Container>

@@ -4,6 +4,7 @@ import {
   type LanguageChangeReason,
   reasonNeedsRefetch,
   reorder,
+  replaceQuery,
   showDisplay,
   toggleQuery,
 } from './useLanguageSelection'
@@ -19,6 +20,20 @@ describe('query languages', () => {
 
   it('refuses to remove the last one, which the server answers 400 for', () => {
     expect(toggleQuery(['chs'], 'chs')).toBeNull()
+  })
+})
+
+describe('replacing the query languages', () => {
+  it('replaces the whole group, as switching the search to one language does', () => {
+    expect(replaceQuery(['chs', 'ja'], ['en'])).toEqual(['en'])
+  })
+
+  it('refuses an empty group, which the server answers 400 for', () => {
+    expect(replaceQuery(['chs'], [])).toBeNull()
+  })
+
+  it('refuses a group identical to the current one', () => {
+    expect(replaceQuery(['chs', 'ja'], ['chs', 'ja'])).toBeNull()
   })
 })
 

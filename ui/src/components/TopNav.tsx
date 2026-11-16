@@ -8,15 +8,9 @@ import {
   Navbar,
   Popover,
 } from '@blueprintjs/core'
-import { DisplayLanguageMenu } from './DisplayLanguageMenu'
 import { FixedWidthContainer } from './FixedWidthContainer'
 
-export interface ITopNavProps {
-  displayLanguages: string[]
-  onToggleDisplayLanguage: (code: string) => void
-}
-
-export function TopNav(props: ITopNavProps) {
+export function TopNav() {
   return (
     <Navbar className={Classes.DARK} fixedToTop>
       <FixedWidthContainer>
@@ -24,39 +18,10 @@ export function TopNav(props: ITopNavProps) {
           <Navbar.Heading>XIV 文本检索</Navbar.Heading>
         </Navbar.Group>
         <Navbar.Group align={Alignment.RIGHT}>
-          <DisplayLanguageButton {...props} />
           <MoreToolsButton />
         </Navbar.Group>
       </FixedWidthContainer>
     </Navbar>
-  )
-}
-
-/**
- * The result table's header carries the same control, but only where there is a table: the landing
- * page and an empty result set have none. The navbar is fixed to the top and always rendered, so
- * putting it here too means the display languages can never become unreachable.
- */
-function DisplayLanguageButton({
-  displayLanguages,
-  onToggleDisplayLanguage,
-}: ITopNavProps) {
-  return (
-    <Popover
-      placement="bottom-end"
-      content={
-        <DisplayLanguageMenu
-          displayLanguages={displayLanguages}
-          onToggle={onToggleDisplayLanguage}
-        />
-      }
-    >
-      <Button
-        icon="translate"
-        text={String(displayLanguages.length)}
-        aria-label={`显示语言 (${displayLanguages.length})`}
-      />
-    </Popover>
   )
 }
 

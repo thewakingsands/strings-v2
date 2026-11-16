@@ -39,6 +39,20 @@ export function toggleQuery(current: string[], code: string): string[] | null {
   return current.filter((lang) => lang !== code)
 }
 
+export function replaceQuery(
+  current: string[],
+  codes: string[],
+): string[] | null {
+  if (codes.length === 0) return null
+  if (
+    codes.length === current.length &&
+    codes.every((code, i) => code === current[i])
+  ) {
+    return null
+  }
+  return [...codes]
+}
+
 export function showDisplay(current: string[], code: string): string[] | null {
   if (current.includes(code)) return null
   // Appended rather than sorted: the order is the column order the user dragged.
@@ -70,6 +84,7 @@ export function reorder(
 export interface UseLanguageSelection extends LanguageSelection {
   toggleQueryLanguage: (code: string) => void
   reorderQueryLanguages: (from: number, to: number) => void
+  setQueryLanguages: (codes: string[]) => void
   showLanguage: (code: string) => void
   hideLanguage: (code: string) => void
   /** What the checkable menu needs: one entry point for both directions. */
@@ -140,6 +155,8 @@ export function useLanguageSelection({
       applyQuery(toggleQuery(queryLanguages, code), 'query'),
     reorderQueryLanguages: (from, to) =>
       applyQuery(reorder(queryLanguages, from, to), 'query-order'),
+    setQueryLanguages: (codes) =>
+      applyQuery(replaceQuery(queryLanguages, codes), 'query'),
     showLanguage: (code) =>
       applyDisplay(showDisplay(displayLanguages, code), 'display'),
     hideLanguage: (code) =>

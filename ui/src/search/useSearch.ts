@@ -49,6 +49,9 @@ export function useSearch(initialQuery: ISearchQuery | null | undefined) {
   }, [query])
 
   const setSearch = (query: ISearchQuery | null | undefined) => {
+    // In the same update as the query: otherwise one render pairs the new query with the
+    // previous result, which is enough for the empty-result probes to fire and be cancelled.
+    setIsLoading(true)
     setQuery(query)
   }
 
