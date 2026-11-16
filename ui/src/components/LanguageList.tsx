@@ -1,4 +1,4 @@
-import { Checkbox, Colors, Icon } from '@blueprintjs/core'
+import { Checkbox, Classes, Colors, Icon } from '@blueprintjs/core'
 import styled from '@emotion/styled'
 import {
   inlineNames,
@@ -22,6 +22,13 @@ const Caption = styled.p<{ $touch: boolean }>(({ $touch }) => ({
   fontSize: 12,
   lineHeight: 1.5,
   color: Colors.GRAY1,
+  // A caption a character or two too long for one line would leave them alone on the second;
+  // evening out the lines keeps that from depending on how long the text happens to be. Chinese
+  // would otherwise break between any two characters, splitting a word, so it breaks at
+  // punctuation, and anywhere only when a clause cannot fit a line by itself.
+  textWrap: 'balance',
+  wordBreak: 'keep-all',
+  overflowWrap: 'anywhere',
 }))
 
 const List = styled.div({
@@ -86,6 +93,11 @@ const Option = styled(Checkbox)<{ $unselected: boolean }>(
       alignItems: 'center',
       margin: 0,
       color: $unselected ? Colors.GRAY1 : 'inherit',
+    },
+    // Blueprint lifts the box 3px to sit on an inline text baseline; centred in a flex row, the
+    // lift leaves it above the name and the drag handle instead.
+    [`&& .${Classes.CONTROL_INDICATOR}`]: {
+      marginTop: 0,
     },
   }),
 )
