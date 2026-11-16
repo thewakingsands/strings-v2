@@ -24,10 +24,16 @@ func foldsKana(lang string) bool {
 // type. It has to be low enough that the typed script still wins and high enough that a
 // name typed in the wrong script still beats rows matching a bigram or two as typed.
 //
-// Measured on publish-20260728-3b64471 with the ja field alone: at 1.0 a hiragana
-// greeting got its katakana spelling mixed into the top ranks, and at 0.3 a long
-// katakana name typed in hiragana lost the first page to rows sharing part of it. 0.5
-// was the one value of the three that did both.
+// Measured on publish-20260728-3b64471. By hand, with the ja field alone: at 1.0 a
+// hiragana greeting got its katakana spelling mixed into the top ranks, and at 0.3 a
+// long katakana name typed in hiragana lost the first page to rows sharing part of it.
+//
+// The relevance eval then compared 0.3, 0.5 and 0.7. All three find every case typed in
+// the other script within ten (recall@10 1.000 for both kana-script families, from 0.194
+// and 0.667 before) and pass every other family. By MRR on those families 0.3 trails
+// (0.862 / 0.727) and 0.5 and 0.7 nearly tie (0.972 / 0.917 against 0.986 / 0.917), but
+// 0.7 lets a row matching partly in the rarer katakana outrank the typed hiragana rows
+// and moves four other cases down a rank for the two it lifts, so 0.5 stays.
 const kanaVariantBoost = 0.5
 
 // The hiragana block U+3041–U+3096 and the katakana block U+30A1–U+30F6 line up one to
