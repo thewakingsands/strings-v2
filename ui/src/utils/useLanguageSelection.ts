@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import {
   readStoredDisplayLanguages,
   readStoredQueryLanguages,
@@ -28,6 +28,25 @@ export interface LanguageChange extends LanguageSelection {
  */
 export function reasonNeedsRefetch(reason: LanguageChangeReason): boolean {
   return reason !== 'column-order' && reason !== 'restore'
+}
+
+/**
+ * Which stored group a change writes. A restore replays a selection that came from a link or from
+ * history, not from the visitor's hands, so it writes neither.
+ */
+export function reasonPersists(
+  reason: LanguageChangeReason,
+): 'query' | 'display' | null {
+  switch (reason) {
+    case 'query':
+    case 'query-order':
+      return 'query'
+    case 'display':
+    case 'column-order':
+      return 'display'
+    case 'restore':
+      return null
+  }
 }
 
 /** The transitions below answer null when a rule refuses, so nothing is dispatched for a no-op. */
@@ -99,43 +118,29 @@ export interface UseLanguageSelection extends LanguageSelection {
  */
 export function useLanguageSelection({
   onChange,
+  initial,
 }: {
   onChange: (change: LanguageChange) => void
+  /** Groups to open with instead of the stored ones, as a link carries them. */
+  initial?: Partial<LanguageSelection>
 }): UseLanguageSelection {
   const [queryLanguages, setQueryLanguages] = useState<string[]>(
-    readStoredQueryLanguages,
+    () => initial?.queryLanguages ?? readStoredQueryLanguages(),
   )
   const [displayLanguages, setDisplayLanguages] = useState<string[]>(
-    readStoredDisplayLanguages,
+    () => initial?.displayLanguages ?? readStoredDisplayLanguages(),
   )
 
-  // Storing only what the visitor actually changed, never what they were given, keeps anyone who
-  // has not touched the pickers on the defaults — so a later change to those defaults still
-  // reaches them instead of being shadowed by a copy written on a first visit. The comparison is
-  // by identity, which is what makes an untouched selection recognisable. Both languages are
-  // written together because they share this one "has it been touched" test.
-  const openedWith = useRef({
-    query: queryLanguages,
-    display: displayLanguages,
-  })
-  useEffect(() => {
-    const initial = openedWith.current
-    if (
-      queryLanguages === initial.query &&
-      displayLanguages === initial.display
-    ) {
-      return
-    }
-    writeStoredQueryLanguages(queryLanguages)
-    writeStoredDisplayLanguages(displayLanguages)
-  }, [queryLanguages, displayLanguages])
-
+  // Writing only from the visitor's own changes, and only the group they changed, keeps anyone
+  // who has not touched a picker on its defaults — so a later change to those defaults still
+  // reaches them — and keeps a link's languages out of storage until the visitor adopts them.
   const applyQuery = (
     next: string[] | null,
     reason: LanguageChangeReason,
   ): void => {
     if (!next) return
     setQueryLanguages(next)
+    if (reasonPersists(reason) === 'query') writeStoredQueryLanguages(next)
     onChange({ queryLanguages: next, displayLanguages, reason })
   }
 
@@ -145,6 +150,7 @@ export function useLanguageSelection({
   ): void => {
     if (!next) return
     setDisplayLanguages(next)
+    if (reasonPersists(reason) === 'display') writeStoredDisplayLanguages(next)
     onChange({ queryLanguages, displayLanguages: next, reason })
   }
 
