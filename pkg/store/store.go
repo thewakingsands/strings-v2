@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -172,7 +173,10 @@ func isNonLatinQuery(q string) bool {
 // Only items from the sheets that sheet lets through are considered; filtering never
 // changes the order of the items that remain.
 // Uses Bleve full-text search for better performance and relevance.
-func (s *Store) Search(q string, langs []string, sheet SheetFilter, offset, limit int, fields []string) (*SearchResult, error) {
+//
+// A query that expands past maxClauseCount is reported as a *QueryTooBroadError, and
+// one still running when ctx ends fails with ctx's error.
+func (s *Store) Search(ctx context.Context, q string, langs []string, sheet SheetFilter, offset, limit int, fields []string) (*SearchResult, error) {
 	if s.index == nil {
 		return nil, fmt.Errorf("index is not loaded")
 	}
@@ -180,12 +184,12 @@ func (s *Store) Search(q string, langs []string, sheet SheetFilter, offset, limi
 		return nil, fmt.Errorf("no search language given")
 	}
 
-	return s.search(parseSearchQuery(q, langs, sheet), q, langs, offset, limit, fields, false)
+	return s.search(ctx, parseSearchQuery(q, langs, sheet), q, langs, offset, limit, fields, false)
 }
 
 // AdvancedSearch is Search with q read as a query string; see parseAdvancedQuery for
 // the syntax. A query that does not parse is reported as an *InvalidQueryError.
-func (s *Store) AdvancedSearch(q string, langs []string, sheet SheetFilter, offset, limit int, fields []string) (*SearchResult, error) {
+func (s *Store) AdvancedSearch(ctx context.Context, q string, langs []string, sheet SheetFilter, offset, limit int, fields []string) (*SearchResult, error) {
 	if s.index == nil {
 		return nil, fmt.Errorf("index is not loaded")
 	}
@@ -198,7 +202,7 @@ func (s *Store) AdvancedSearch(q string, langs []string, sheet SheetFilter, offs
 		return nil, &InvalidQueryError{err: err}
 	}
 
-	return s.search(query, q, langs, offset, limit, fields, true)
+	return s.search(ctx, query, q, langs, offset, limit, fields, true)
 }
 
 // InvalidQueryError is a query the caller got wrong, as opposed to a search that failed.
@@ -214,7 +218,7 @@ func (e *InvalidQueryError) Unwrap() error { return e.err }
 // With highlightAll, bleve highlights every field asked for, instead of only langs. An
 // advanced query can name fields outside langs, and its text is syntax rather than
 // words, so it cannot be analyzed by hand the way addDisplayFragments does.
-func (s *Store) search(query query.Query, q string, langs []string, offset, limit int, fields []string, highlightAll bool) (*SearchResult, error) {
+func (s *Store) search(ctx context.Context, query query.Query, q string, langs []string, offset, limit int, fields []string, highlightAll bool) (*SearchResult, error) {
 	searchFields := make([]string, 0, len(fields)+len(metaFields))
 	searchFields = append(searchFields, metaFields...)
 	searchFields = append(searchFields, fields...)
@@ -234,10 +238,9 @@ func (s *Store) search(query query.Query, q string, langs []string, offset, limi
 		}
 	}
 
-	searchResults, err := s.index.Search(request)
+	searchResults, err := s.index.SearchInContext(ctx, request)
 	if err != nil {
-		log.Printf("search error: %v", err)
-		return nil, fmt.Errorf("search error: %w", err)
+		return nil, searchFailed(err)
 	}
 
 	// Bleve only fragmented the languages it searched. Give the rest one too, so every
@@ -261,7 +264,7 @@ func (s *Store) search(query query.Query, q string, langs []string, offset, limi
 
 // GetBySheet returns items for a given sheet with pagination.
 // Returns early when offset+limit items are found to optimize performance.
-func (s *Store) GetBySheet(sheet string, offset, limit int, fields []string) (*SearchResult, error) {
+func (s *Store) GetBySheet(ctx context.Context, sheet string, offset, limit int, fields []string) (*SearchResult, error) {
 	if s.index == nil {
 		return nil, fmt.Errorf("index is not loaded")
 	}
@@ -288,10 +291,9 @@ func (s *Store) GetBySheet(sheet string, offset, limit int, fields []string) (*S
 	request.Fields = searchFields
 	request.SortBy([]string{"index"})
 
-	searchResults, err := s.index.Search(request)
+	searchResults, err := s.index.SearchInContext(ctx, request)
 	if err != nil {
-		log.Printf("search error: %v", err)
-		return nil, fmt.Errorf("search error: %w", err)
+		return nil, searchFailed(err)
 	}
 
 	items := make([]*Item, 0, len(searchResults.Hits))

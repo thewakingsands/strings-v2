@@ -65,7 +65,7 @@ var scriptFields = []string{"chs", "tc", "en", "ja"}
 func TestSearchRanksChineseMatchAboveEnglishColumnCJKNoise(t *testing.T) {
 	st := newScriptStore(t)
 
-	result, err := st.Search("师傅大人", []string{"chs", "en", "ja"}, SheetFilter{}, 0, 100, scriptFields)
+	result, err := st.Search(t.Context(), "师傅大人", []string{"chs", "en", "ja"}, SheetFilter{}, 0, 100, scriptFields)
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
@@ -94,7 +94,7 @@ func TestSearchKeepsSingleLanguageOrderForNonLatinQueries(t *testing.T) {
 
 	for _, q := range []string{"大爆発", "街人", "师傅大人"} {
 		t.Run(q, func(t *testing.T) {
-			got, err := st.Search(q, []string{"en"}, SheetFilter{}, 0, 100, scriptFields)
+			got, err := st.Search(t.Context(), q, []string{"en"}, SheetFilter{}, 0, 100, scriptFields)
 			if err != nil {
 				t.Fatalf("search: %v", err)
 			}

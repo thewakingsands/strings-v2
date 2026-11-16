@@ -40,7 +40,7 @@ func TestLoadStoreBuildsTheIndexThenServesIt(t *testing.T) {
 		t.Fatalf("first load: %v", err)
 	}
 
-	result, err := st.Search("onion", []string{"en"}, SheetFilter{}, 0, 10, []string{"chs", "en"})
+	result, err := st.Search(t.Context(), "onion", []string{"en"}, SheetFilter{}, 0, 10, []string{"chs", "en"})
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
@@ -63,7 +63,7 @@ func TestLoadStoreBuildsTheIndexThenServesIt(t *testing.T) {
 		}
 	})
 
-	again, err := reopened.Search("onion", []string{"en"}, SheetFilter{}, 0, 10, []string{"chs", "en"})
+	again, err := reopened.Search(t.Context(), "onion", []string{"en"}, SheetFilter{}, 0, 10, []string{"chs", "en"})
 	if err != nil {
 		t.Fatalf("search after reopen: %v", err)
 	}
@@ -94,7 +94,7 @@ func TestLoadStoreAllowsSeveralReadersAtOnce(t *testing.T) {
 	}
 
 	for i, st := range stores {
-		result, err := st.Search("onion", []string{"en"}, SheetFilter{}, 0, 10, []string{"chs", "en"})
+		result, err := st.Search(t.Context(), "onion", []string{"en"}, SheetFilter{}, 0, 10, []string{"chs", "en"})
 		if err != nil {
 			t.Fatalf("reader %d search: %v", i+1, err)
 		}

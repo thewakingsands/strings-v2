@@ -277,7 +277,7 @@ func TestRelevanceOnPinnedData(t *testing.T) {
 			if tc.sheet != "" {
 				sheet.Include = []string{tc.sheet}
 			}
-			result, err := st.Search(tc.query, tc.langs, sheet, 0, limit, relevanceFields)
+			result, err := st.Search(t.Context(), tc.query, tc.langs, sheet, 0, limit, relevanceFields)
 			if err != nil {
 				t.Fatalf("search: %v", err)
 			}

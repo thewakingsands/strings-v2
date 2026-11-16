@@ -15,7 +15,8 @@ export function SearchError(props: { error: Error }) {
     <ErrorNonIdealState
       icon="error"
       title={
-        error instanceof HttpError && error.status === 400
+        error instanceof HttpError &&
+        (error.status === 400 || error.status === 422)
           ? '查询有误'
           : '搜索出错'
       }

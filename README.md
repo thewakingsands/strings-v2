@@ -129,7 +129,7 @@ Each JSON file under the strings directory contains an array of items:
   - Response: JSON with matching items and meta fields such as `total` and `elapsed`
   - `sheet` is a comma separated list of sheet patterns; see [Filtering by sheet](#filtering-by-sheet)
   - See [Searching several languages at once](#searching-several-languages-at-once),
-    [Advanced queries](#advanced-queries) and [Values and highlights](#values-and-highlights)
+    [Advanced queries](#advanced-queries), [Limits](#limits) and [Values and highlights](#values-and-highlights)
 
 - Get items by sheet
   - Endpoint: `GET /api/items`
@@ -227,6 +227,28 @@ curl -G "http://127.0.0.1:8080/api/search" --data-urlencode "lang=chs,en" \
 - A query that does not parse is rejected with `400 invalid query: ...`, and an unknown
   `mode` with `400 invalid mode: ...`. Leaving `mode` out, or `mode=simple`, is the plain
   search.
+- A wildcard, regular expression or fuzzy clause may match at most 8192 index terms in
+  a field; see [Limits](#limits).
+
+### Limits
+
+Both endpoints stop a search that would otherwise hold a core for minutes:
+
+- A search still running after 8 seconds is stopped and answered with
+  `504 search took longer than 8s and was stopped`. The deadline sits under the
+  server's 10 second write timeout, past which no answer could be sent at all.
+- A clause may expand to at most 8192 index terms in each field it searches, and one
+  query may combine at most 8192 terms. A query past either is rejected with
+  `422 query expands to more than 8192 terms in <field>; ...` or
+  `422 query combines more than 8192 terms; ...`. That leaves room for every sheet
+  pattern, a one-letter prefix such as `en:s*`, and any value in the corpus pasted
+  whole, while a bare `*` or a CJK term with `~2`, which match most of a column, are
+  refused instead of running for tens of seconds.
+- A search whose client disconnects is stopped, with nothing written back.
+
+The `sheet` parameter is exempt from the term limit: it filters without scoring, and
+bleve merges a pattern's sheets instead of counting them. A `sheet:` clause in an
+advanced query is scored like any other clause, and is limited.
 
 ### Values and highlights
 

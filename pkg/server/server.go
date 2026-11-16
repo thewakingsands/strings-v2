@@ -1,7 +1,9 @@
 package server
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -20,6 +22,8 @@ type Server struct {
 	store       *store.Store
 	baseDir     string
 	updateToken string // from XIVSTRINGS_UPDATE_TOKEN; empty means update not allowed
+
+	searchTimeout time.Duration
 
 	updateMu     sync.Mutex
 	updateStatus updateStatus
@@ -43,6 +47,11 @@ type updateStatus struct {
 	Error      string      `json:"error,omitempty"`
 }
 
+// searchTimeout stays under the http.Server's WriteTimeout of 10 s in main.go: a search
+// still running at that point can no longer be answered at all, not even with the 504
+// that says why.
+const searchTimeout = 8 * time.Second
+
 // handleSearch implements:
 //  1. Provided one or more language codes and an input, search all items that contain
 //     input in any of those languages, return sheet name, rowId, and values from all
@@ -59,6 +68,9 @@ type updateStatus struct {
 //
 // mode=advanced reads q as a bleve query string, such as `chs:*鲈* -en:fish`; see
 // store.AdvancedSearch. A query that does not parse is answered with 400.
+//
+// In either mode, a query that expands to more terms than the store allows is answered
+// with 422, and one still running after searchTimeout with 504.
 func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -109,18 +121,16 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	ctx, cancel := context.WithTimeout(r.Context(), s.searchTimeout)
+	defer cancel()
+
 	search := st.Search
 	if advanced {
 		search = st.AdvancedSearch
 	}
-	results, err := search(q, langs, sheet, offset, limit, fields)
-	var invalidQuery *store.InvalidQueryError
-	if errors.As(err, &invalidQuery) {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
+	results, err := search(ctx, q, langs, sheet, offset, limit, fields)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		s.writeSearchError(w, r, err)
 		return
 	}
 
@@ -167,9 +177,12 @@ func (s *Server) handleItems(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "store not loaded")
 		return
 	}
-	results, err := st.GetBySheet(sheet, offset, limit, fields)
+	ctx, cancel := context.WithTimeout(r.Context(), s.searchTimeout)
+	defer cancel()
+
+	results, err := st.GetBySheet(ctx, sheet, offset, limit, fields)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		s.writeSearchError(w, r, err)
 		return
 	}
 
@@ -182,6 +195,25 @@ func (s *Server) handleItems(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, response)
+}
+
+// writeSearchError answers a search that failed with err.
+func (s *Server) writeSearchError(w http.ResponseWriter, r *http.Request, err error) {
+	var invalidQuery *store.InvalidQueryError
+	var tooBroad *store.QueryTooBroadError
+	switch {
+	case r.Context().Err() != nil:
+		// The client has gone, so there is nobody to answer.
+	case errors.Is(err, context.DeadlineExceeded):
+		writeError(w, http.StatusGatewayTimeout,
+			fmt.Sprintf("search took longer than %s and was stopped", s.searchTimeout))
+	case errors.As(err, &invalidQuery):
+		writeError(w, http.StatusBadRequest, err.Error())
+	case errors.As(err, &tooBroad):
+		writeError(w, http.StatusUnprocessableEntity, err.Error())
+	default:
+		writeError(w, http.StatusInternalServerError, err.Error())
+	}
 }
 
 // handleVersion: GET returns current data version and update status; POST starts an async update job.
@@ -255,9 +287,10 @@ func (s *Server) SetStore(newStore *store.Store) {
 
 func CreateMux(config ServerConfig) *http.ServeMux {
 	server := &Server{
-		store:       config.Store,
-		baseDir:     config.BaseDir,
-		updateToken: config.UpdateToken,
+		store:         config.Store,
+		baseDir:       config.BaseDir,
+		updateToken:   config.UpdateToken,
+		searchTimeout: searchTimeout,
 		updateStatus: updateStatus{
 			State: updateStateIdle,
 		},

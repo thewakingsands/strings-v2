@@ -115,7 +115,7 @@ func TestSheetFilterKeepsTheUnfilteredOrder(t *testing.T) {
 	st := newSheetTestStore(t)
 	langs := []string{"en"}
 
-	all, err := st.Search("onion", langs, SheetFilter{}, 0, 100, langs)
+	all, err := st.Search(t.Context(), "onion", langs, SheetFilter{}, 0, 100, langs)
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
@@ -125,7 +125,7 @@ func TestSheetFilterKeepsTheUnfilteredOrder(t *testing.T) {
 
 	for _, tc := range sheetFilterCases {
 		t.Run(tc.name, func(t *testing.T) {
-			filtered, err := st.Search("onion", langs, tc.filter, 0, 100, langs)
+			filtered, err := st.Search(t.Context(), "onion", langs, tc.filter, 0, 100, langs)
 			if err != nil {
 				t.Fatalf("search: %v", err)
 			}
@@ -138,7 +138,7 @@ func TestAdvancedSheetFilterKeepsTheUnfilteredOrder(t *testing.T) {
 	st := newSheetTestStore(t)
 	langs := []string{"en"}
 
-	all, err := st.AdvancedSearch("onion", langs, SheetFilter{}, 0, 100, langs)
+	all, err := st.AdvancedSearch(t.Context(), "onion", langs, SheetFilter{}, 0, 100, langs)
 	if err != nil {
 		t.Fatalf("advanced search: %v", err)
 	}
@@ -147,7 +147,7 @@ func TestAdvancedSheetFilterKeepsTheUnfilteredOrder(t *testing.T) {
 		{Include: []string{"quest/*"}},
 		{Exclude: []string{"Item"}},
 	} {
-		filtered, err := st.AdvancedSearch("onion", langs, filter, 0, 100, langs)
+		filtered, err := st.AdvancedSearch(t.Context(), "onion", langs, filter, 0, 100, langs)
 		if err != nil {
 			t.Fatalf("advanced search with %+v: %v", filter, err)
 		}
@@ -164,7 +164,7 @@ func TestSheetFilterMatchingNothingIsEmpty(t *testing.T) {
 		{Include: []string{"item"}},
 		{Include: []string{"ITEM*"}},
 	} {
-		result, err := st.Search("onion", []string{"en"}, filter, 0, 100, []string{"en"})
+		result, err := st.Search(t.Context(), "onion", []string{"en"}, filter, 0, 100, []string{"en"})
 		if err != nil {
 			t.Fatalf("search with %+v: %v", filter, err)
 		}

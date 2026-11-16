@@ -35,16 +35,29 @@ func (f SheetFilter) apply(text query.Query) query.Query {
 
 	// Several sheet terms cannot go into a scored conjunction: each brings its own IDF,
 	// which lifts rows from rare sheets. Boosting the clause to zero does not help
-	// either, since it still changes the query norm. Filter and MustNot never score.
+	// either, since it still changes the query norm. A filter never scores.
 	boolean := bleve.NewBooleanQuery()
 	boolean.AddMust(text)
-	if len(f.Include) > 0 {
-		boolean.AddFilter(sheetPatternsQuery(f.Include))
-	}
-	if len(f.Exclude) > 0 {
-		boolean.AddMustNot(sheetPatternsQuery(f.Exclude))
-	}
+	boolean.AddFilter(f.sheetsQuery())
 	return boolean
+}
+
+// sheetsQuery matches every row of the sheets f lets through.
+//
+// The exclusions belong in here rather than in a MustNot beside the text, although
+// neither would score. Bleve builds a filter without scoring, and only then does it
+// merge a pattern matching more sheets than DisjunctionMaxClauseCount instead of
+// refusing it, so that -quest/* keeps working however many quest sheets there are.
+func (f SheetFilter) sheetsQuery() query.Query {
+	if len(f.Exclude) == 0 {
+		return sheetPatternsQuery(f.Include)
+	}
+	sheets := bleve.NewBooleanQuery()
+	if len(f.Include) > 0 {
+		sheets.Must = sheetPatternsQuery(f.Include)
+	}
+	sheets.MustNot = sheetPatternsQuery(f.Exclude)
+	return sheets
 }
 
 // sheetPatternsQuery matches a sheet matching any of patterns.

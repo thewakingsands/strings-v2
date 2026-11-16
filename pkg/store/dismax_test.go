@@ -78,7 +78,7 @@ var rankingFields = []string{"chs", "tc", "en", "ja"}
 func TestSearchRanksRealSentenceAboveRepeatedShortString(t *testing.T) {
 	st := newRankingStore(t)
 
-	single, err := st.Search(rankingQuery, []string{"en"}, SheetFilter{}, 0, 100, rankingFields)
+	single, err := st.Search(t.Context(), rankingQuery, []string{"en"}, SheetFilter{}, 0, 100, rankingFields)
 	if err != nil {
 		t.Fatalf("search en: %v", err)
 	}
@@ -94,7 +94,7 @@ func TestSearchRanksRealSentenceAboveRepeatedShortString(t *testing.T) {
 		{"chs", "tc", "en", "ja"},
 	} {
 		t.Run(strings.Join(langs, ","), func(t *testing.T) {
-			result, err := st.Search(rankingQuery, langs, SheetFilter{}, 0, 100, rankingFields)
+			result, err := st.Search(t.Context(), rankingQuery, langs, SheetFilter{}, 0, 100, rankingFields)
 			if err != nil {
 				t.Fatalf("search: %v", err)
 			}
@@ -282,7 +282,7 @@ func TestDisMaxScoresBelowDisjunctionForRepeatedMatch(t *testing.T) {
 func TestDisMaxKeepsHighlightsFromEveryMatchingLanguage(t *testing.T) {
 	st := newRankingStore(t)
 
-	result, err := st.Search("win", []string{"chs", "tc", "en", "ja"}, SheetFilter{}, 0, 100, rankingFields)
+	result, err := st.Search(t.Context(), "win", []string{"chs", "tc", "en", "ja"}, SheetFilter{}, 0, 100, rankingFields)
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
@@ -313,7 +313,7 @@ func TestDisMaxPaginatesWithoutOverlapOrGaps(t *testing.T) {
 	st := newRankingStore(t)
 	langs := []string{"chs", "tc", "en", "ja"}
 
-	all, err := st.Search(rankingQuery, langs, SheetFilter{}, 0, 100, rankingFields)
+	all, err := st.Search(t.Context(), rankingQuery, langs, SheetFilter{}, 0, 100, rankingFields)
 	if err != nil {
 		t.Fatalf("search all: %v", err)
 	}
@@ -324,7 +324,7 @@ func TestDisMaxPaginatesWithoutOverlapOrGaps(t *testing.T) {
 	var paged []string
 	const pageSize = 2
 	for offset := 0; offset < len(all.Items); offset += pageSize {
-		page, err := st.Search(rankingQuery, langs, SheetFilter{}, offset, pageSize, rankingFields)
+		page, err := st.Search(t.Context(), rankingQuery, langs, SheetFilter{}, offset, pageSize, rankingFields)
 		if err != nil {
 			t.Fatalf("search offset %d: %v", offset, err)
 		}
