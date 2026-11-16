@@ -78,7 +78,7 @@ var rankingFields = []string{"chs", "tc", "en", "ja"}
 func TestSearchRanksRealSentenceAboveRepeatedShortString(t *testing.T) {
 	st := newRankingStore(t)
 
-	single, err := st.Search(rankingQuery, []string{"en"}, "", 0, 100, rankingFields)
+	single, err := st.Search(rankingQuery, []string{"en"}, SheetFilter{}, 0, 100, rankingFields)
 	if err != nil {
 		t.Fatalf("search en: %v", err)
 	}
@@ -94,7 +94,7 @@ func TestSearchRanksRealSentenceAboveRepeatedShortString(t *testing.T) {
 		{"chs", "tc", "en", "ja"},
 	} {
 		t.Run(strings.Join(langs, ","), func(t *testing.T) {
-			result, err := st.Search(rankingQuery, langs, "", 0, 100, rankingFields)
+			result, err := st.Search(rankingQuery, langs, SheetFilter{}, 0, 100, rankingFields)
 			if err != nil {
 				t.Fatalf("search: %v", err)
 			}
@@ -133,7 +133,7 @@ func TestDisMaxMatchesSameDocumentsAsDisjunction(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.query+"/"+strings.Join(tc.langs, ","), func(t *testing.T) {
-			disMax := parseSearchQuery(tc.query, tc.langs, "")
+			disMax := parseSearchQuery(tc.query, tc.langs, SheetFilter{})
 
 			disjuncts := make([]query.Query, 0, len(tc.langs))
 			for _, lang := range tc.langs {
@@ -205,7 +205,7 @@ func TestDisMaxScoresByBestLanguageNotBySum(t *testing.T) {
 	const docID = "Addon@1"
 	langs := []string{"chs", "tc", "en", "ja"}
 
-	request := bleve.NewSearchRequestOptions(parseSearchQuery("win", langs, ""), 100, 0, true)
+	request := bleve.NewSearchRequestOptions(parseSearchQuery("win", langs, SheetFilter{}), 100, 0, true)
 	results, err := st.index.Search(request)
 	if err != nil {
 		t.Fatalf("search: %v", err)
@@ -267,7 +267,7 @@ func TestDisMaxScoresBelowDisjunctionForRepeatedMatch(t *testing.T) {
 	}
 
 	summed := scoreOf(t, st, bleve.NewDisjunctionQuery(disjuncts...), docID)
-	best := scoreOf(t, st, parseSearchQuery("win", langs, ""), docID)
+	best := scoreOf(t, st, parseSearchQuery("win", langs, SheetFilter{}), docID)
 	if summed < 0 || best < 0 {
 		t.Fatalf("%s did not match both queries (disjunction %v, dis_max %v)", docID, summed, best)
 	}
@@ -282,7 +282,7 @@ func TestDisMaxScoresBelowDisjunctionForRepeatedMatch(t *testing.T) {
 func TestDisMaxKeepsHighlightsFromEveryMatchingLanguage(t *testing.T) {
 	st := newRankingStore(t)
 
-	result, err := st.Search("win", []string{"chs", "tc", "en", "ja"}, "", 0, 100, rankingFields)
+	result, err := st.Search("win", []string{"chs", "tc", "en", "ja"}, SheetFilter{}, 0, 100, rankingFields)
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
@@ -313,7 +313,7 @@ func TestDisMaxPaginatesWithoutOverlapOrGaps(t *testing.T) {
 	st := newRankingStore(t)
 	langs := []string{"chs", "tc", "en", "ja"}
 
-	all, err := st.Search(rankingQuery, langs, "", 0, 100, rankingFields)
+	all, err := st.Search(rankingQuery, langs, SheetFilter{}, 0, 100, rankingFields)
 	if err != nil {
 		t.Fatalf("search all: %v", err)
 	}
@@ -324,7 +324,7 @@ func TestDisMaxPaginatesWithoutOverlapOrGaps(t *testing.T) {
 	var paged []string
 	const pageSize = 2
 	for offset := 0; offset < len(all.Items); offset += pageSize {
-		page, err := st.Search(rankingQuery, langs, "", offset, pageSize, rankingFields)
+		page, err := st.Search(rankingQuery, langs, SheetFilter{}, offset, pageSize, rankingFields)
 		if err != nil {
 			t.Fatalf("search offset %d: %v", offset, err)
 		}

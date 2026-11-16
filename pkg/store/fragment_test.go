@@ -105,7 +105,7 @@ func plainLen(fragment string) int {
 func TestSearchHighlightsLanguagesOutsideTheSearch(t *testing.T) {
 	st := newFragmentStore(t)
 
-	result, err := st.Search(straightQuoteQuery, []string{"chs"}, "", 0, 10, fragmentFields)
+	result, err := st.Search(straightQuoteQuery, []string{"chs"}, SheetFilter{}, 0, 10, fragmentFields)
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
@@ -131,7 +131,7 @@ func TestSearchHighlightsLanguagesOutsideTheSearch(t *testing.T) {
 func TestSearchHighlightsCoverEveryRequestedField(t *testing.T) {
 	st := newFragmentStore(t)
 
-	result, err := st.Search(straightQuoteQuery, []string{"chs"}, "", 0, 10, fragmentFields)
+	result, err := st.Search(straightQuoteQuery, []string{"chs"}, SheetFilter{}, 0, 10, fragmentFields)
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
@@ -155,7 +155,7 @@ func TestSearchHighlightsCoverEveryRequestedField(t *testing.T) {
 func TestSearchPreviewsLanguagesWithoutAMatch(t *testing.T) {
 	st := newFragmentStore(t)
 
-	result, err := st.Search("圆葱", []string{"chs"}, "", 0, 10, fragmentFields)
+	result, err := st.Search("圆葱", []string{"chs"}, SheetFilter{}, 0, 10, fragmentFields)
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
@@ -182,7 +182,7 @@ func TestSearchPreviewsLanguagesWithoutAMatch(t *testing.T) {
 func TestSearchFragmentsAreComparableInLength(t *testing.T) {
 	st := newFragmentStore(t)
 
-	result, err := st.Search(straightQuoteQuery, []string{"chs"}, "", 0, 10, fragmentFields)
+	result, err := st.Search(straightQuoteQuery, []string{"chs"}, SheetFilter{}, 0, 10, fragmentFields)
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
@@ -218,7 +218,7 @@ func TestSearchFragmentsAreComparableInLength(t *testing.T) {
 func TestSearchHighlightsStemmedMatchOutsideTheSearch(t *testing.T) {
 	st := newFragmentStore(t)
 
-	result, err := st.Search("hardly", []string{"chs"}, "", 0, 10, fragmentFields)
+	result, err := st.Search("hardly", []string{"chs"}, SheetFilter{}, 0, 10, fragmentFields)
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
@@ -233,7 +233,7 @@ func TestSearchHighlightsStemmedMatchOutsideTheSearch(t *testing.T) {
 func TestSearchHighlightsCJKOutsideTheSearch(t *testing.T) {
 	st := newFragmentStore(t)
 
-	result, err := st.Search("圆葱", []string{"en"}, "", 0, 10, fragmentFields)
+	result, err := st.Search("圆葱", []string{"en"}, SheetFilter{}, 0, 10, fragmentFields)
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}

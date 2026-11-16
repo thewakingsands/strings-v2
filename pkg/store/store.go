@@ -99,7 +99,7 @@ const nonNativeScriptBoost = 0.05
 
 // parseSearchQuery matches q against every language in langs, ranking earlier
 // languages above later ones when they are otherwise equally good.
-func parseSearchQuery(q string, langs []string, sheet string) query.Query {
+func parseSearchQuery(q string, langs []string, sheet SheetFilter) query.Query {
 	nonLatin := isNonLatinQuery(q)
 
 	disjuncts := make([]query.Query, 0, len(langs))
@@ -123,17 +123,7 @@ func parseSearchQuery(q string, langs []string, sheet string) query.Query {
 		textQuery = newDisMaxQuery(disjuncts)
 	}
 
-	if sheet == "" {
-		return textQuery
-	}
-
-	sheetQuery := bleve.NewTermQuery(sheet)
-	sheetQuery.SetField("sheet")
-
-	return bleve.NewConjunctionQuery(
-		textQuery,
-		sheetQuery,
-	)
+	return sheet.apply(textQuery)
 }
 
 // languageBoost weights the clause searching lang, the i-th language asked for.
@@ -168,9 +158,10 @@ func isNonLatinQuery(q string) bool {
 
 // Search finds items whose value in any of the given languages matches the query.
 // Items matching in an earlier language rank above items matching in a later one.
-// If sheetFilter is non-empty, only items from that sheet are considered.
+// Only items from the sheets that sheet lets through are considered; filtering never
+// changes the order of the items that remain.
 // Uses Bleve full-text search for better performance and relevance.
-func (s *Store) Search(q string, langs []string, sheet string, offset, limit int, fields []string) (*SearchResult, error) {
+func (s *Store) Search(q string, langs []string, sheet SheetFilter, offset, limit int, fields []string) (*SearchResult, error) {
 	if s.index == nil {
 		return nil, fmt.Errorf("index is not loaded")
 	}
@@ -183,7 +174,7 @@ func (s *Store) Search(q string, langs []string, sheet string, offset, limit int
 
 // AdvancedSearch is Search with q read as a query string; see parseAdvancedQuery for
 // the syntax. A query that does not parse is reported as an *InvalidQueryError.
-func (s *Store) AdvancedSearch(q string, langs []string, sheet string, offset, limit int, fields []string) (*SearchResult, error) {
+func (s *Store) AdvancedSearch(q string, langs []string, sheet SheetFilter, offset, limit int, fields []string) (*SearchResult, error) {
 	if s.index == nil {
 		return nil, fmt.Errorf("index is not loaded")
 	}

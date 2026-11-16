@@ -50,6 +50,10 @@ type updateStatus struct {
 //
 // GET /search?lang=en&q=battle[&sheet=AchievementKind][&offset=0][&limit=100][&mode=advanced]
 //
+// sheet is a comma separated list of case-sensitive globs (* and ?) naming the sheets to
+// search, where a leading - excludes the sheets it matches instead: sheet=quest/*,-Item.
+// It only removes rows, never reorders them.
+//
 // lang accepts a comma separated list, ordered by decreasing preference:
 // lang=chs,en,ja ranks matches in chs above matches in en above matches in ja.
 //
@@ -63,7 +67,6 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 
 	query := r.URL.Query()
 	q := strings.TrimSpace(query.Get("q"))
-	sheet := strings.TrimSpace(query.Get("sheet"))
 
 	langs, err := parseLangs(query.Get("lang"))
 	if err != nil {
@@ -80,6 +83,12 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	}
 
 	advanced, err := parseSearchMode(query.Get("mode"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	sheet, err := parseSheetFilter(query.Get("sheet"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
