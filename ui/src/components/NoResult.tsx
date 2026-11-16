@@ -12,14 +12,12 @@ export function NoResult(props: {
   if (props.fallback) {
     return <LanguageFallback {...props.fallback} />
   }
-  // Before anything is typed the focused search box already asks for input.
-  if (!props.keyword) {
-    return null
-  }
   return (
     <StyledNonIdealState
       icon="search"
-      description={`没有找到“${props.keyword}”`}
+      description={
+        props.keyword ? `没有找到“${props.keyword}”` : '请输入关键字'
+      }
     />
   )
 }
