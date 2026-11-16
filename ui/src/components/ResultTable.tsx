@@ -192,7 +192,9 @@ export interface IResultTableProps {
 
 export function ResultTable(props: IResultTableProps) {
   const { items, keyword, displayLanguages } = props
-  useScrollIntoView('[data-highlight-row="true"]', [props.highlightItem])
+  // Items too: the table stays mounted while the next rows load, so a context view opened from a
+  // search gets its rows after the highlight has already changed.
+  useScrollIntoView('[data-highlight-row="true"]', [props.highlightItem, items])
 
   // Keyed by row rather than by index, so paging simply shows rows that are not in the
   // set and therefore collapsed, while paging back keeps whatever was open.

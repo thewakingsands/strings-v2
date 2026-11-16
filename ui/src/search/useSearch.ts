@@ -37,6 +37,8 @@ export function useSearch(initialQuery: ISearchQuery | null | undefined) {
         }
       } catch (e) {
         if (e && e instanceof Error && e.name !== 'AbortError') {
+          // The rows before the error are not this query's, and the next load would show them.
+          setResult(emptySearchResult)
           setError(e)
         }
       } finally {

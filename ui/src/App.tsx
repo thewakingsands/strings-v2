@@ -10,6 +10,7 @@ import { ResultTableHeader } from './components/ResultTableHeader'
 import { SearchBar } from './components/SearchBar'
 import { SearchError } from './components/SearchError'
 import { SearchResult } from './components/SearchResult'
+import { StaleResults } from './components/StaleResults'
 import { TopNav } from './components/TopNav'
 import type { StringItem } from './search/interface'
 import type { IKeywordProps } from './search/linesByKeyword'
@@ -344,10 +345,33 @@ export default function App() {
   })
 
   const page = search.query?.keyword?.page || 0
+  // While a page loads this is still the count the last answer gave, which is what keeps the
+  // pager on screen through the turn.
   const total = Math.ceil(search.result.total / PAGE_SIZE)
-  const showPager = !search.isLoading && page > 0 && total > 0
+  const showPager = page > 0 && total > 0
+  const showStale = search.isLoading && search.result.items.length > 0
+
+  // The rows stay put while the next page loads, so a turn from the bottom pager would otherwise
+  // land at the bottom of the new page.
+  const resultsRef = useRef<HTMLDivElement>(null)
+  const pageTurned = useRef(false)
+  useLayoutEffect(() => {
+    if (search.isLoading || !pageTurned.current) return
+    pageTurned.current = false
+    const results = resultsRef.current
+    if (!results) return
+    const headerTop =
+      Number.parseFloat(
+        getComputedStyle(document.documentElement).getPropertyValue(
+          '--results-header-top',
+        ),
+      ) || NAVBAR_HEIGHT
+    const offset = results.getBoundingClientRect().top - headerTop
+    if (offset < 0) window.scrollBy(0, offset)
+  }, [search.isLoading])
 
   const handlePageChange = (page: number) => {
+    pageTurned.current = true
     search.setPage(page)
     const submitted = search.query?.keyword
     if (submitted) writeSearch({ ...submitted, page }, displayLanguages, 'push')
@@ -380,7 +404,7 @@ export default function App() {
             </MarginedDiv>
           </StickyContainer>
           {pager}
-          <ResultsSection>
+          <ResultsSection ref={resultsRef}>
             {/* Rendered in every state, landing page and empty result included: this is the
                 only place the display languages can be changed. */}
             {isMobile ? (
@@ -397,33 +421,35 @@ export default function App() {
                 onReorderDisplayLanguages={languages.reorderDisplayLanguages}
               />
             )}
-            {search.isLoading ? (
+            {search.isLoading && !showStale ? (
               <Loading />
             ) : search.error ? (
               <SearchError error={search.error} />
-            ) : search.result ? (
-              <SearchResult
-                displayLanguages={displayLanguages}
-                keyword={search.query?.keyword?.keyword || ''}
-                advanced={search.query?.keyword?.advanced}
-                items={search.result.items}
-                onContextButtonClick={handleContextClick}
-                highlightItem={highlightItem || undefined}
-                fallback={
-                  probeEnabled && submitted
-                    ? {
-                        keyword: submitted.keyword,
-                        searchedLanguages: submitted.languages,
-                        loading: probe.loading,
-                        ranked: probe.ranked,
-                        onReplace: (lang) =>
-                          languages.setQueryLanguages([lang]),
-                        onAdd: languages.toggleQueryLanguage,
-                      }
-                    : undefined
-                }
-              />
-            ) : null}
+            ) : (
+              <StaleResults busy={showStale}>
+                <SearchResult
+                  displayLanguages={displayLanguages}
+                  keyword={search.query?.keyword?.keyword || ''}
+                  advanced={search.query?.keyword?.advanced}
+                  items={search.result.items}
+                  onContextButtonClick={handleContextClick}
+                  highlightItem={highlightItem || undefined}
+                  fallback={
+                    probeEnabled && submitted
+                      ? {
+                          keyword: submitted.keyword,
+                          searchedLanguages: submitted.languages,
+                          loading: probe.loading,
+                          ranked: probe.ranked,
+                          onReplace: (lang) =>
+                            languages.setQueryLanguages([lang]),
+                          onAdd: languages.toggleQueryLanguage,
+                        }
+                      : undefined
+                  }
+                />
+              </StaleResults>
+            )}
           </ResultsSection>
           {pager}
           <Footer />
