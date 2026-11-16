@@ -109,6 +109,22 @@ const languageBoostStep = 0.01
 // an even wider IDF gap between the columns are covered too.
 const nonNativeScriptBoost = 0.05
 
+// latinInCJKBoost damps the CJK columns for a query written in Latin letters alone, the
+// same problem as nonNativeScriptBoost in the other direction.
+//
+// The Latin text in those columns is English nobody translated, mostly short: credits,
+// labels, markup. A word of it is rare in a CJK column, so its IDF there dwarfs the same
+// word's in en, and a value holding that one word outscores the row whose en column
+// holds the whole line. The CJK stop words used to hide this by diluting the clause; see
+// latinInCJKAnalyzer.
+//
+// Measured with the relevance eval on publish-20260728-3b64471, each case searching its
+// own language and the other two, first and then last. Undamped, 37 rows the cases name
+// as noise reached a first page; at 0.5, 10 or 11; at 0.2 and below, 1, and every English
+// case ranks exactly where searching en alone puts it. 0.2 down to 0.01 score the same,
+// so this takes nonNativeScriptBoost's value from the middle of that range.
+const latinInCJKBoost = 0.05
+
 // latinInCJKAnalyzer is what a query written in Latin letters alone is matched with in
 // the CJK columns: their own cjk analyzer, followed by the stop list the en column uses.
 //
@@ -202,6 +218,9 @@ func languageBoost(i int, lang string, script queryScript) float64 {
 	}
 	if script == nonLatinScript && !usesCJKAnalyzer(lang) {
 		boost *= nonNativeScriptBoost
+	}
+	if script == latinScript && usesCJKAnalyzer(lang) {
+		boost *= latinInCJKBoost
 	}
 	return boost
 }

@@ -154,6 +154,12 @@ curl "http://127.0.0.1:8080/api/search?lang=chs,en,ja&sheet=Item&q=onion"
   above one that matched only in `en`, which in turn ranks above one that matched only
   in `ja`, the same as boosting `chs^3 en^2 ja^1`. With a single language there is no
   order to apply, and the result is that column's own ranking.
+- A column that can only match the query through text nobody translated counts for a
+  twentieth, wherever it sits in the order: `chs`, `tc`, `ja` and `ko` for a query
+  written only in Latin letters, and `en`, `de` and `fr` for one with no Latin letters
+  at all. So `lang=chs,en&q=onion` ranks a row whose `en` column says onion above one
+  whose `chs` column was left in English. Those rows still match, and searching that
+  column alone ranks them as before.
 - Blank segments and repeats are ignored, so `lang=chs,,en` and `lang=chs,chs,en` both
   mean `lang=chs,en`.
 - An unknown code is rejected with `400 invalid lang: <code>`, matching how `fields`

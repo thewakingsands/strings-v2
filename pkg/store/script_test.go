@@ -1,6 +1,7 @@
 package store
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 	"testing"
@@ -344,6 +345,80 @@ func TestQueryAnalyzer(t *testing.T) {
 			if got := queryAnalyzer(lang, script); got != "" {
 				t.Errorf("queryAnalyzer(%s, %v) = %q, want the field's own", lang, script, got)
 			}
+		}
+	}
+}
+
+// The shape latinInCJKBoost answers: the line a query comes from sits in the en column of
+// one row, while another row's CJK columns kept a single word of it in English. time is
+// common in en and rare in the CJK columns, so undamped, the one-word value outscores the
+// line.
+func untranslatedWordFixture() []*Item {
+	items := []*Item{
+		{Sheet: "Quest", RowID: "1", Index: 0, Values: map[string]string{
+			"chs": "出发的时候到了。", "tc": "出發的時候到了。",
+			"en": "Now the time has come to depart.", "ja": "出発の時が来た。",
+		}},
+		{Sheet: "Addon", RowID: "1", Index: 0, Values: map[string]string{
+			"chs": "TIME", "tc": "TIME", "en": "Duration", "ja": "TIME",
+		}},
+	}
+	for i, en := range []string{"Time flies.", "A time to rest.", "Time and tide.", "Some other time.",
+		"Time's up.", "Time out.", "In time.", "Time after time."} {
+		items = append(items, &Item{Sheet: "Balloon", RowID: fmt.Sprint(i), Index: uint32(i), Values: map[string]string{
+			"chs": "时光飞逝", "tc": "時光飛逝", "en": en, "ja": "光陰矢の如し",
+		}})
+	}
+	return items
+}
+
+func TestSearchRanksTheLineAboveAWordLeftUntranslatedInCJK(t *testing.T) {
+	st := newScorchTestStore(t, untranslatedWordFixture())
+
+	for _, langs := range [][]string{{"en", "chs", "ja"}, {"ja", "chs", "en"}, {"chs", "ja", "en"}} {
+		result, err := st.Search(t.Context(), "the time", langs, SheetFilter{}, 0, 20, scriptFields)
+		if err != nil {
+			t.Fatalf("search %v: %v", langs, err)
+		}
+		line, word := rankOf(result.Items, "Quest", "1"), rankOf(result.Items, "Addon", "1")
+		if line == -1 || word == -1 || word < line {
+			t.Errorf("lang=%v = %v, want Quest#1 above Addon#1", langs, rowIDsOf(result.Items))
+		}
+	}
+}
+
+// Like nonNativeScriptBoost, the damping is a multiplier on every document in the field,
+// so searching a CJK column alone for English left untranslated there keeps its order.
+func TestSearchKeepsSingleLanguageOrderForLatinQueries(t *testing.T) {
+	st := newScorchTestStore(t, untranslatedWordFixture())
+
+	for _, q := range []string{"the time", "Now the time has come", "TIME duration"} {
+		got, err := st.Search(t.Context(), q, []string{"ja"}, SheetFilter{}, 0, 100, scriptFields)
+		if err != nil {
+			t.Fatalf("search %q: %v", q, err)
+		}
+
+		// Control: the same analysis with no boost at all.
+		plain := bleve.NewMatchQuery(q)
+		plain.SetField("ja")
+		plain.Analyzer = latinInCJKAnalyzer
+		request := bleve.NewSearchRequestOptions(plain, 100, 0, false)
+		control, err := st.index.Search(request)
+		if err != nil {
+			t.Fatalf("control search %q: %v", q, err)
+		}
+
+		gotIDs := make([]string, 0, len(got.Items))
+		for _, item := range got.Items {
+			gotIDs = append(gotIDs, item.Sheet+"@"+item.RowID)
+		}
+		wantIDs := make([]string, 0, len(control.Hits))
+		for _, hit := range control.Hits {
+			wantIDs = append(wantIDs, hit.ID)
+		}
+		if got.Total != control.Total || strings.Join(gotIDs, " ") != strings.Join(wantIDs, " ") {
+			t.Errorf("search %q = %v (total %d), want %v (total %d)",
+				q, gotIDs, got.Total, wantIDs, control.Total)
 		}
 	}
 }
