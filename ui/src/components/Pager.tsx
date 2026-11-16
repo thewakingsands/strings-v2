@@ -1,9 +1,16 @@
 import { Button, ButtonGroup } from '@blueprintjs/core'
 import styled from '@emotion/styled'
+import { useLayoutEffect, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
+import { pagerPages } from '../utils/pagerPages'
 
 const PagerContainer = styled.div({
   textAlign: 'center',
 })
+
+// The nearest siblings are the ‹ and › buttons, which a narrow pager keeps.
+const MAX_SIBLINGS = 3
+const MIN_SIBLINGS = 1
 
 export interface IPagerProps {
   current: number
@@ -12,21 +19,40 @@ export interface IPagerProps {
 }
 
 export function Pager(props: IPagerProps) {
-  const pages = Array.from(
-    new Set<number>([
-      1,
-      props.total,
-      props.current - 1,
-      props.current - 2,
-      props.current - 3,
-      props.current,
-      props.current + 1,
-      props.current + 2,
-      props.current + 3,
-    ]),
-  )
-    .filter((x) => x > 0 && x <= props.total)
-    .sort((a, b) => a - b)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const groupRef = useRef<HTMLDivElement>(null)
+  const [room, setRoom] = useState(0)
+  const [fit, setFit] = useState({ key: '', siblings: MAX_SIBLINGS })
+  const key = `${props.current}/${props.total}/${room}`
+  const siblings = fit.key === key ? fit.siblings : MAX_SIBLINGS
+
+  // The parent's width is the room, not this container's: in ResultCount this container is only
+  // as wide as its buttons, and the ghosts flanking it shrink away before the buttons overflow.
+  // The parent's width never depends on the buttons, so refitting them cannot loop. Flushed so
+  // that the refit lands before the resized frame is painted, not one frame after it.
+  useLayoutEffect(() => {
+    const parent = containerRef.current?.parentElement
+    if (!parent) return
+    const observer = new ResizeObserver(() =>
+      flushSync(() => setRoom(parent.clientWidth)),
+    )
+    observer.observe(parent)
+    return () => observer.disconnect()
+  }, [])
+
+  // How wide the buttons are depends on how many digits the page numbers have, so whether they
+  // fit is known only after layout. Each page and room starts from the widest pager and gives up
+  // the farthest siblings until it fits, all before paint.
+  useLayoutEffect(() => {
+    const group = groupRef.current
+    const parent = containerRef.current?.parentElement
+    if (!group || !parent || siblings <= MIN_SIBLINGS) return
+    if (group.getBoundingClientRect().width > parent.clientWidth) {
+      setFit({ key, siblings: siblings - 1 })
+    }
+  }, [key, siblings])
+
+  const pages = pagerPages(props.current, props.total, siblings)
 
   const children = []
 
@@ -41,8 +67,8 @@ export function Pager(props: IPagerProps) {
   }
 
   return (
-    <PagerContainer>
-      <ButtonGroup>{children}</ButtonGroup>
+    <PagerContainer ref={containerRef}>
+      <ButtonGroup ref={groupRef}>{children}</ButtonGroup>
     </PagerContainer>
   )
 }
