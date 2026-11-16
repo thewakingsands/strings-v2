@@ -13,18 +13,36 @@ export interface ApiError {
 }
 
 const sheetPrefix = 'filename:'
+const excludedSheetPrefix = '-filename:'
 
-function processQuery(searchParams: URLSearchParams, q: string) {
-  const parts = q.split(' ')
+/**
+ * Takes every `filename:` and `-filename:` token out of q and turns them into the
+ * sheet parameter: `覚えていろ filename:quest/* -filename:Item,Action` becomes
+ * q `覚えていろ` and sheet `quest/*,-Item,-Action`. An empty sheet means no filter.
+ */
+export function splitSheetTokens(q: string): { q: string; sheet: string } {
+  const words: string[] = []
+  const entries: string[] = []
 
-  // Extract sheet from query
-  const sheetPart = parts.findIndex((part) => part.startsWith(sheetPrefix))
-  if (sheetPart !== -1) {
-    searchParams.set('sheet', parts[sheetPart].slice(sheetPrefix.length))
-    parts.splice(sheetPart, 1)
+  for (const token of q.split(/\s+/)) {
+    if (token.startsWith(sheetPrefix)) {
+      entries.push(...sheetParts(token.slice(sheetPrefix.length)))
+    } else if (token.startsWith(excludedSheetPrefix)) {
+      entries.push(
+        ...sheetParts(token.slice(excludedSheetPrefix.length)).map(
+          (part) => `-${part}`,
+        ),
+      )
+    } else if (token) {
+      words.push(token)
+    }
   }
 
-  searchParams.set('q', parts.filter((part) => !!part).join(' '))
+  return { q: words.join(' '), sheet: entries.join(',') }
+}
+
+function sheetParts(value: string): string[] {
+  return value.split(',').filter((part) => !!part)
 }
 
 export async function searchApi(
@@ -42,7 +60,11 @@ export async function searchApi(
 ): Promise<ApiResponse<StringItem[]>> {
   const searchParams = new URLSearchParams()
   searchParams.set('lang', params.langs.join(','))
-  processQuery(searchParams, params.q)
+  const { q, sheet } = splitSheetTokens(params.q)
+  searchParams.set('q', q)
+  if (sheet) {
+    searchParams.set('sheet', sheet)
+  }
   if (params.advanced) {
     searchParams.set('mode', 'advanced')
   }
