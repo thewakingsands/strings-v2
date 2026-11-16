@@ -3,6 +3,7 @@ import {
   hideDisplay,
   type LanguageChangeReason,
   reasonNeedsRefetch,
+  reasonPersists,
   reorder,
   replaceQuery,
   showDisplay,
@@ -101,6 +102,23 @@ describe('which changes need a new request', () => {
   for (const [reason, needed] of cases) {
     it(`${reason} → ${needed ? 'refetch' : 'no refetch'}`, () => {
       expect(reasonNeedsRefetch(reason)).toBe(needed)
+    })
+  }
+})
+
+describe('which stored group a change writes', () => {
+  const cases: Array<[LanguageChangeReason, 'query' | 'display' | null]> = [
+    ['query', 'query'],
+    ['query-order', 'query'],
+    ['display', 'display'],
+    ['column-order', 'display'],
+    // A link or a history entry, never the visitor's own choice.
+    ['restore', null],
+  ]
+
+  for (const [reason, group] of cases) {
+    it(`${reason} → ${group ?? 'nothing'}`, () => {
+      expect(reasonPersists(reason)).toBe(group)
     })
   }
 })

@@ -31,6 +31,9 @@ export function useSearch(initialQuery: ISearchQuery | null | undefined) {
           } else {
             setResult(emptySearchResult)
           }
+        } else {
+          // Going back to the landing page must not leave the last results on it.
+          setResult(emptySearchResult)
         }
       } catch (e) {
         if (e && e instanceof Error && e.name !== 'AbortError') {

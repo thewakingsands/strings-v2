@@ -41,7 +41,7 @@ const displayLanguagesKey = 'xivstrings.displayLanguages'
 const knownLanguages = new Set(Object.keys(languageMap))
 
 /** Keeps the codes the app still knows, in the order given, without duplicates. */
-function sanitizeLanguages(value: unknown): string[] | null {
+export function sanitizeLanguages(value: unknown): string[] | null {
   if (!Array.isArray(value)) return null
   const languages: string[] = []
   for (const lang of value) {
