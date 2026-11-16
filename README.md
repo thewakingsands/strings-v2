@@ -26,6 +26,9 @@ Override with flags:
 go run . -addr=":8090" -data="/path/to/data"
 ```
 
+`-no-update-check` starts on the version named in `data/version` without asking
+GitHub for a newer release, and refuses to start when there is no local data.
+
 ### Data directory layout
 
 The `-data` path is the root for all app data. The server expects or creates:
@@ -45,6 +48,10 @@ serving that data unchanged. It only refuses to start when there is nothing loca
 to fall back to, such as a first deployment with no connectivity. Nothing is
 retried in the background, so a degraded start keeps serving the older data until
 someone triggers `POST /api/version`.
+
+When the data directory is read only, or the version is pinned on purpose, pass
+`-no-update-check` to skip the check altogether. It affects startup only:
+`POST /api/version` still updates when asked.
 
 ### Running several instances
 

@@ -15,10 +15,10 @@ import (
 	"xivstrings/pkg/store"
 )
 
-const (
-	githubReleasesURL = "https://api.github.com/repos/thewakingsands/ixion/releases/latest"
-	stringsZipName    = "strings.zip"
-)
+const stringsZipName = "strings.zip"
+
+// A variable so that tests can point it at an httptest server.
+var latestReleaseURL = "https://api.github.com/repos/thewakingsands/ixion/releases/latest"
 
 // ReleaseAsset represents a GitHub release asset.
 type ReleaseAsset struct {
@@ -34,7 +34,7 @@ type GitHubRelease struct {
 
 // GetLatestRelease fetches the latest release from GitHub.
 func GetLatestRelease() (*GitHubRelease, error) {
-	req, err := http.NewRequest(http.MethodGet, githubReleasesURL, nil)
+	req, err := http.NewRequest(http.MethodGet, latestReleaseURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
@@ -238,6 +238,30 @@ func ResolveLocalVersion(baseDir string) (*EnsureResult, error) {
 		IndexDir:  indexDir,
 		Updated:   false,
 	}, nil
+}
+
+// ResolveStartup picks the data to serve at startup. With skipCheck it never
+// touches the network; otherwise it tries EnsureVersion and falls back to the
+// local version when the check fails.
+func ResolveStartup(baseDir string, skipCheck bool) (*EnsureResult, error) {
+	if skipCheck {
+		return ResolveLocalVersion(baseDir)
+	}
+
+	// A GitHub outage must not keep the server down when the data is already here.
+	// Only startup degrades like this: POST /api/version asks for an update on
+	// purpose, so runUpdate still reports the failure instead of quietly succeeding.
+	result, err := EnsureVersion(baseDir)
+	if err == nil {
+		return result, nil
+	}
+	log.Printf("could not check the latest release: %v", err)
+	result, err = ResolveLocalVersion(baseDir)
+	if err != nil {
+		return nil, err
+	}
+	log.Printf("continuing with local data, version %s", result.Version)
+	return result, nil
 }
 
 func dirExists(path string) bool {

@@ -15,19 +15,19 @@ func main() {
 	addr := flag.String("addr", "127.0.0.1:8080", "listen address (e.g. :8080)")
 	dataDir := flag.String("data", "data", "directory containing JSON data files and index files")
 	uiDir := flag.String("ui", "ui/dist", "directory containing UI static files")
+	noUpdateCheck := flag.Bool("no-update-check", false,
+		"start on the version in <data>/version without asking GitHub for a newer release")
 	flag.Parse()
 
-	// A GitHub outage must not keep the server down when the data is already here.
-	// Only startup degrades like this: POST /api/version asks for an update on
-	// purpose, so runUpdate still reports the failure instead of quietly succeeding.
-	result, err := version.EnsureVersion(*dataDir)
+	if *noUpdateCheck {
+		log.Printf("release check skipped (-no-update-check)")
+	}
+	result, err := version.ResolveStartup(*dataDir, *noUpdateCheck)
 	if err != nil {
-		log.Printf("could not check the latest release: %v", err)
-		result, err = version.ResolveLocalVersion(*dataDir)
-		if err != nil {
-			log.Fatalf("no usable local data, cannot start: %v", err)
+		if *noUpdateCheck {
+			log.Fatalf("no usable local data, cannot start: %v (drop -no-update-check to download it)", err)
 		}
-		log.Printf("continuing with local data, version %s", result.Version)
+		log.Fatalf("no usable local data, cannot start: %v", err)
 	}
 	log.Printf("using version %s (data: %s, index: %s)", result.Version, result.StringDir, result.IndexDir)
 

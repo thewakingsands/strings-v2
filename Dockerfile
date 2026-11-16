@@ -55,5 +55,6 @@ VOLUME /app/data
 EXPOSE 8080
 
 # -data /app/data: use volume for version, strings, and index
+# Append "-no-update-check" to stay on the data already in the volume.
 CMD ["./xivstrings", "-addr", ":8080", "-data", "/app/data"]
 
