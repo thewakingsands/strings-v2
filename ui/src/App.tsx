@@ -6,6 +6,7 @@ import { DisplayLanguageBar } from './components/DisplayLanguageBar'
 import { Footer } from './components/Footer'
 import { MainContainer } from './components/MainContainer'
 import { Pager } from './components/Pager'
+import { ResultCount } from './components/ResultCount'
 import { ResultTableHeader } from './components/ResultTableHeader'
 import { SearchBar } from './components/SearchBar'
 import { SearchError } from './components/SearchError'
@@ -350,6 +351,10 @@ export default function App() {
   const total = Math.ceil(search.result.total / PAGE_SIZE)
   const showPager = page > 0 && total > 0
   const showStale = search.isLoading && search.result.items.length > 0
+  // A plain search matches any one of its words, so its total grows as the query gets more
+  // specific. Only an advanced query's total counts what was asked for (STR-11).
+  const showCount =
+    !!search.resultQuery?.keyword?.advanced && search.result.total > 0
 
   // The rows stay put while the next page loads, so a turn from the bottom pager would otherwise
   // land at the bottom of the new page.
@@ -405,6 +410,9 @@ export default function App() {
           </StickyContainer>
           {pager}
           <ResultsSection ref={resultsRef}>
+            {showCount && (
+              <ResultCount total={search.result.total} busy={showStale} />
+            )}
             {/* Rendered in every state, landing page and empty result included: this is the
                 only place the display languages can be changed. */}
             {isMobile ? (

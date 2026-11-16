@@ -9,7 +9,12 @@ export interface ISearchQuery {
 }
 
 export function useSearch(initialQuery: ISearchQuery | null | undefined) {
-  const [result, setResult] = useState<SearchResult>(emptySearchResult)
+  // Kept with the query it answers: while the next answer loads, `query` is already the new one,
+  // and a plain search's total must not be read as an advanced one's count.
+  const [answer, setAnswer] = useState<{
+    result: SearchResult
+    query?: ISearchQuery | null
+  }>({ result: emptySearchResult })
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<Error | null>(null)
   const [query, setQuery] = useState<ISearchQuery | null | undefined>(
@@ -18,6 +23,7 @@ export function useSearch(initialQuery: ISearchQuery | null | undefined) {
 
   useEffect(() => {
     const abort = new AbortController()
+    const setResult = (result: SearchResult) => setAnswer({ result, query })
 
     const fetchData = async () => {
       try {
@@ -66,5 +72,13 @@ export function useSearch(initialQuery: ISearchQuery | null | undefined) {
     }
   }
 
-  return { result, query, isLoading, error, setSearch, setPage }
+  return {
+    result: answer.result,
+    resultQuery: answer.query,
+    query,
+    isLoading,
+    error,
+    setSearch,
+    setPage,
+  }
 }

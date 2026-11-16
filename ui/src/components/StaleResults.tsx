@@ -15,14 +15,15 @@ const Area = styled.div({
   position: 'relative',
 })
 
+/** Also for whatever outside the rows describes them, so that it fades along with them. */
+export const staleStyle = {
+  opacity: 0.4,
+  transition: `opacity 150ms ${SHOW_DELAY}`,
+  pointerEvents: 'none',
+} as const
+
 const Rows = styled.div<{ $busy: boolean }>(({ $busy }) =>
-  $busy
-    ? {
-        opacity: 0.4,
-        transition: `opacity 150ms ${SHOW_DELAY}`,
-        pointerEvents: 'none',
-      }
-    : {},
+  $busy ? staleStyle : {},
 )
 
 const SpinnerLayer = styled.div({
