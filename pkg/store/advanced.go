@@ -27,45 +27,46 @@ func parseAdvancedQuery(q string, langs []string, sheet SheetFilter) (query.Quer
 	}
 
 	script := scriptOf(strings.Join(unfieldedTexts(parsed, nil), " "))
-	textQuery := foldKanaClauses(spreadOverLanguages(parsed, langs, script))
+	textQuery := matchTermsOnce(spreadOverLanguages(parsed, langs, script))
 
 	return sheet.apply(textQuery), nil
 }
 
-// foldKanaClauses lets every plain match clause on a kana folded field match either
-// script, covering the copies spreadOverLanguages made as well as clauses that named the
-// field themselves.
+// matchTermsOnce makes every plain match clause a termsMatchQuery, which searches a
+// repeated term once and on a kana folded field matches either script. That covers the
+// copies spreadOverLanguages made as well as clauses that named their field themselves.
 //
-// Phrases stay exact, since quoting is how a user asks for the text as typed. Fuzzy,
-// wildcard and regexp clauses are not analyzed into terms the way a match clause is, so
-// they are left alone too. The query string parser only ever sets fuzziness through
-// SetFuzziness, which is why a nonzero Fuzziness identifies every fuzzy clause.
-func foldKanaClauses(q query.Query) query.Query {
+// Phrases stay as they are, since quoting is how a user asks for the text as typed, and
+// a phrase needs every position. Fuzzy, wildcard and regexp clauses are not analyzed
+// into terms the way a match clause is, so they are left alone too. The query string
+// parser only ever sets fuzziness through SetFuzziness, which is why a nonzero Fuzziness
+// identifies every fuzzy clause.
+func matchTermsOnce(q query.Query) query.Query {
 	switch q := q.(type) {
 	case *query.BooleanQuery:
-		q.Must = foldKanaClauses(q.Must)
-		q.Should = foldKanaClauses(q.Should)
-		q.MustNot = foldKanaClauses(q.MustNot)
-		q.Filter = foldKanaClauses(q.Filter)
+		q.Must = matchTermsOnce(q.Must)
+		q.Should = matchTermsOnce(q.Should)
+		q.MustNot = matchTermsOnce(q.MustNot)
+		q.Filter = matchTermsOnce(q.Filter)
 		return q
 	case *query.ConjunctionQuery:
 		for i, conjunct := range q.Conjuncts {
-			q.Conjuncts[i] = foldKanaClauses(conjunct)
+			q.Conjuncts[i] = matchTermsOnce(conjunct)
 		}
 		return q
 	case *query.DisjunctionQuery:
 		for i, disjunct := range q.Disjuncts {
-			q.Disjuncts[i] = foldKanaClauses(disjunct)
+			q.Disjuncts[i] = matchTermsOnce(disjunct)
 		}
 		return q
 	case *disMaxQuery:
 		for i, disjunct := range q.disjuncts {
-			q.disjuncts[i] = foldKanaClauses(disjunct)
+			q.disjuncts[i] = matchTermsOnce(disjunct)
 		}
 		return q
 	case *query.MatchQuery:
-		if foldsKana(q.FieldVal) && q.Fuzziness == 0 {
-			return newKanaMatchQuery(q)
+		if q.Fuzziness == 0 {
+			return newTermsMatchQuery(q, foldsKana(q.FieldVal))
 		}
 		return q
 	default:

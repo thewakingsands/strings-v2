@@ -82,10 +82,11 @@ func rowIDsOf(items []*Item) []string {
 func TestParseSearchQuerySingleLanguageStaysUnboosted(t *testing.T) {
 	q := parseSearchQuery("onion", []string{"en"}, SheetFilter{})
 
-	matchQuery, ok := q.(*query.MatchQuery)
+	terms, ok := q.(*termsMatchQuery)
 	if !ok {
-		t.Fatalf("query type = %T, want *query.MatchQuery", q)
+		t.Fatalf("query type = %T, want *termsMatchQuery", q)
 	}
+	matchQuery := terms.match
 	if matchQuery.Match != "onion" {
 		t.Errorf("match = %q, want %q", matchQuery.Match, "onion")
 	}
@@ -112,8 +113,8 @@ func TestParseSearchQueryBoostsByLanguageOrder(t *testing.T) {
 	}
 
 	for i, disjunct := range disMax.disjuncts {
-		if kana, ok := disjunct.(*kanaMatchQuery); ok {
-			disjunct = kana.match
+		if terms, ok := disjunct.(*termsMatchQuery); ok {
+			disjunct = terms.match
 		}
 		matchQuery, ok := disjunct.(*query.MatchQuery)
 		if !ok {
@@ -152,7 +153,7 @@ func TestParseSearchQueryAddsSheetFilter(t *testing.T) {
 		langs         []string
 		wantTextQuery any
 	}{
-		{name: "single language", langs: []string{"en"}, wantTextQuery: &query.MatchQuery{}},
+		{name: "single language", langs: []string{"en"}, wantTextQuery: &termsMatchQuery{}},
 		{name: "multiple languages", langs: []string{"chs", "en"}, wantTextQuery: &disMaxQuery{}},
 	}
 
@@ -187,8 +188,8 @@ func TestParseSearchQueryAddsSheetFilter(t *testing.T) {
 
 func sameQueryType(got, want any) bool {
 	switch want.(type) {
-	case *query.MatchQuery:
-		_, ok := got.(*query.MatchQuery)
+	case *termsMatchQuery:
+		_, ok := got.(*termsMatchQuery)
 		return ok
 	case *disMaxQuery:
 		_, ok := got.(*disMaxQuery)
@@ -478,7 +479,7 @@ func TestSearchWithoutKanaScoresAsBefore(t *testing.T) {
 		{"漢字", []string{"chs", "ja", "en"}},
 	} {
 		folded := parseSearchQuery(tc.query, tc.langs, SheetFilter{})
-		plain := unfoldKana(folded)
+		plain := unwrapTermsMatch(folded)
 
 		for _, docID := range []string{"Kana@6", "Kana@7"} {
 			got, want := scoreOf(t, st, folded, docID), scoreOf(t, st, plain, docID)
@@ -493,16 +494,16 @@ func TestSearchWithoutKanaScoresAsBefore(t *testing.T) {
 	}
 }
 
-// unfoldKana replaces the kana folding clauses parseSearchQuery builds with the plain
-// match queries they wrap.
-func unfoldKana(q query.Query) query.Query {
+// unwrapTermsMatch replaces the termsMatchQuery clauses parseSearchQuery builds with the
+// plain match queries they wrap.
+func unwrapTermsMatch(q query.Query) query.Query {
 	switch q := q.(type) {
-	case *kanaMatchQuery:
+	case *termsMatchQuery:
 		return q.match
 	case *disMaxQuery:
 		disjuncts := make([]query.Query, len(q.disjuncts))
 		for i, disjunct := range q.disjuncts {
-			disjuncts[i] = unfoldKana(disjunct)
+			disjuncts[i] = unwrapTermsMatch(disjunct)
 		}
 		return newDisMaxQuery(disjuncts)
 	}

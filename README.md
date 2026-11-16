@@ -172,8 +172,8 @@ Supported codes are `chs`, `tc`, `en`, `de`, `fr`, `ja`, `ko`.
 `ja` matches hiragana and katakana interchangeably: `q=かたかな` finds a row that spells
 it `カタカナ`, and the reverse. Each part of the query counts in full where it matches
 the script it was typed in and for less where it matches only the other one, so the
-spelling typed ranks first. `meta.total` grows accordingly. A query with no kana in it
-scores exactly as it did before. The other languages are not folded.
+spelling typed ranks first. `meta.total` grows accordingly. Folding leaves a query with
+no kana in it as it was. The other languages are not folded.
 
 English stop words such as `the`, `but` and `how` never match in `en`, whose analyzer
 drops them, and a query written only in Latin letters skips them in `chs`, `tc`, `ja`
@@ -252,12 +252,16 @@ Both endpoints stop a search that would otherwise hold a core for minutes:
   `504 search took longer than 8s and was stopped`. The deadline sits under the
   server's 10 second write timeout, past which no answer could be sent at all.
 - A clause may expand to at most 8192 index terms in each field it searches, and one
-  query may combine at most 8192 terms. A query past either is rejected with
+  query may combine at most 8192 different terms. A query past either is rejected with
   `422 query expands to more than 8192 terms in <field>; ...` or
   `422 query combines more than 8192 terms; ...`. That leaves room for every sheet
   pattern, a one-letter prefix such as `en:s*`, and any value in the corpus pasted
   whole, while a bare `*` or a CJK term with `~2`, which match most of a column, are
   refused instead of running for tens of seconds.
+- A term the query repeats is searched once and weighs as much as all its repeats. A
+  pasted paragraph repeats its commonest words and character pairs, whose lists of rows
+  are the longest to read, and reading each only once is what lets every value in the
+  corpus, pasted whole, finish inside the deadline.
 - A search whose client disconnects is stopped, with nothing written back.
 
 The `sheet` parameter is exempt from the term limit: it filters without scoring, and

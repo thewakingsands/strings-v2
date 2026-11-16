@@ -244,7 +244,7 @@ func TestParseAdvancedQueryLeavesFuzzyKanaClauseAlone(t *testing.T) {
 		switch q := q.(type) {
 		case *query.MatchQuery:
 			matches = append(matches, q)
-		case *kanaMatchQuery:
+		case *termsMatchQuery:
 			folded++
 		case *query.BooleanQuery:
 			for _, child := range []query.Query{q.Must, q.Should, q.MustNot, q.Filter} {
