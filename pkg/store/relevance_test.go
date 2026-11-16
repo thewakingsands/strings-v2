@@ -257,6 +257,13 @@ func openPinnedStore(t *testing.T) *Store {
 		}
 	})
 
+	// Fails rather than skips. The index answers with the mapping it was built with, so
+	// after a mapping change in code these cases would go on passing against the old
+	// behaviour while appearing to measure the new one.
+	if err := verifyMapping(idx, indexDir); err != nil {
+		t.Fatal(err)
+	}
+
 	return &Store{index: idx}
 }
 

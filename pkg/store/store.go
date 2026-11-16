@@ -1,6 +1,7 @@
 package store
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"slices"
@@ -47,7 +48,8 @@ func openIndexReadOnly(indexDir string, boltTimeout string) (bleve.Index, error)
 }
 
 // LoadStore opens the index at indexDir for querying, building it from the JSON files
-// in dataDir first if it is not there yet.
+// in dataDir first if it is not there yet. An index built with a mapping other than this
+// binary's is refused with a *MappingMismatchError; see MappingFingerprint.
 func LoadStore(dataDir string, indexDir string) (*Store, error) {
 	idx, err := openIndexReadOnly(indexDir, indexOpenTimeout)
 	if err == bleve.ErrorIndexPathDoesNotExist {
@@ -62,6 +64,11 @@ func LoadStore(dataDir string, indexDir string) (*Store, error) {
 		return nil, fmt.Errorf("open bleve index %s (another instance may hold a write lock on it): %w",
 			indexDir, err)
 	}
+
+	if err := verifyMapping(idx, indexDir); err != nil {
+		return nil, errors.Join(err, idx.Close())
+	}
+	log.Printf("index mapping %s matches this binary", MappingFingerprint())
 
 	s := &Store{
 		index: idx,

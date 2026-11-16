@@ -42,6 +42,14 @@ On first run, or when the version changes, the server fetches the latest
 downloads `strings.zip`, extracts to `data/strings/<version>/`, and builds the
 index under `data/index/<version>/`.
 
+An index keeps the mapping it was built with, which says how each language is
+analyzed, and every query is answered with that copy rather than the server's own.
+So a server whose mapping differs from its index's refuses to start, and lists the
+fields that differ; otherwise a changed analyzer would quietly do nothing. Rebuild
+the index with the new binary, or keep serving it with the old one. The startup log
+prints the fingerprint it matched (`index mapping … matches this binary`), which
+also tells two instances' indexes apart.
+
 If that release check fails, from a network outage or a GitHub rate limit, the
 server logs the failure and starts anyway on the version named in `data/version`,
 serving that data unchanged. It only refuses to start when there is nothing local
