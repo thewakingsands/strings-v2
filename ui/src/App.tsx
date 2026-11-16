@@ -359,11 +359,14 @@ export default function App() {
   // The rows stay put while the next page loads, so a turn from the bottom pager would otherwise
   // land at the bottom of the new page.
   const resultsRef = useRef<HTMLDivElement>(null)
+  const countRef = useRef<HTMLDivElement>(null)
   const pageTurned = useRef(false)
   useLayoutEffect(() => {
     if (search.isLoading || !pageTurned.current) return
     pageTurned.current = false
-    const results = resultsRef.current
+    // The count sits with the top pager rather than in the results, and comes back into view
+    // with the rows it describes.
+    const results = countRef.current ?? resultsRef.current
     if (!results) return
     const headerTop =
       Number.parseFloat(
@@ -382,11 +385,10 @@ export default function App() {
     if (submitted) writeSearch({ ...submitted, page }, displayLanguages, 'push')
   }
 
-  const pager = showPager && (
-    <MarginedDiv>
-      <Pager current={page} total={total} onPageChange={handlePageChange} />
-    </MarginedDiv>
+  const pagerButtons = showPager && (
+    <Pager current={page} total={total} onPageChange={handlePageChange} />
   )
+  const pager = pagerButtons && <MarginedDiv>{pagerButtons}</MarginedDiv>
 
   return (
     <>
@@ -408,11 +410,18 @@ export default function App() {
               />
             </MarginedDiv>
           </StickyContainer>
-          {pager}
+          {showCount ? (
+            <ResultCount
+              ref={countRef}
+              total={search.result.total}
+              busy={showStale}
+            >
+              {pagerButtons}
+            </ResultCount>
+          ) : (
+            pager
+          )}
           <ResultsSection ref={resultsRef}>
-            {showCount && (
-              <ResultCount total={search.result.total} busy={showStale} />
-            )}
             {/* Rendered in every state, landing page and empty result included: this is the
                 only place the display languages can be changed. */}
             {isMobile ? (
