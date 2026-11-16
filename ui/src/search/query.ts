@@ -12,6 +12,16 @@ export interface ApiError {
   error: string
 }
 
+/** Keeps the status so the error state can tell a rejected query from a failing server. */
+export class HttpError extends Error {
+  readonly status: number
+
+  constructor(status: number, message: string) {
+    super(message)
+    this.status = status
+  }
+}
+
 const sheetPrefix = 'filename:'
 const excludedSheetPrefix = '-filename:'
 
@@ -86,7 +96,7 @@ export async function searchApi(
 
   if (!resp.ok) {
     const error: ApiError = await resp.json()
-    throw new Error(error.error || `HTTP ${resp.status}`)
+    throw new HttpError(resp.status, error.error || `HTTP ${resp.status}`)
   }
 
   return resp.json()
@@ -120,7 +130,7 @@ export async function itemsApi(
 
   if (!resp.ok) {
     const error: ApiError = await resp.json()
-    throw new Error(error.error || `HTTP ${resp.status}`)
+    throw new HttpError(resp.status, error.error || `HTTP ${resp.status}`)
   }
 
   return resp.json()

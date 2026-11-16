@@ -100,3 +100,10 @@ export function writeStoredQueryLanguages(languages: string[]): void {
 export function writeStoredDisplayLanguages(languages: string[]): void {
   writeLanguages(displayLanguagesKey, languages)
 }
+
+/** Pads a run of language names with a space on each side that touches Latin text, so it sits inside Chinese prose. */
+export function inlineNames(text: string): string {
+  const before = /^[A-Za-z0-9]/.test(text) ? ' ' : ''
+  const after = /[A-Za-z0-9]$/.test(text) ? ' ' : ''
+  return `${before}${text}${after}`
+}

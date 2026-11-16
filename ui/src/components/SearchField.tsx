@@ -28,8 +28,7 @@ export interface ISearchFieldProps {
   style?: CSSProperties
 }
 
-const QUERY_CAPTION =
-  '勾上的语言都会搜。几门都匹配得一样好时，排在上面的结果靠前。'
+const QUERY_CAPTION = '匹配程度相同时，靠上语言里的结果排在前面。'
 
 // Inset by the 1px the input draws its border with, which the scope button would cover otherwise.
 const LeftSlot = styled.span({
@@ -93,7 +92,6 @@ function ScopeButton({
       onToggle={onToggleQueryLanguage}
       onReorder={onReorderQueryLanguages}
       caption={QUERY_CAPTION}
-      firstHint="同分时最先"
       touch={isMobile}
     />
   )
@@ -154,7 +152,7 @@ const syntaxExamples: [string, string][] = [
   ['"bass fish"', '短语'],
   ['+a +b', '必须同时包含'],
   ['-a', '排除'],
-  ['chs:鲈鱼', '只搜某个语言'],
+  ['chs:鲈鱼', '只搜某种语言'],
   ['sheet:Item', '只搜某个表'],
   ['/暗.+/', '正则，匹配单个词'],
   ['fish~1', '模糊匹配'],
@@ -181,7 +179,7 @@ const advancedHelp = (
   <div>
     <div>高级查询（bleve query string）</div>
     <SyntaxList>{syntaxRows(syntaxExamples)}</SyntaxList>
-    <div style={{ marginTop: 8 }}>两种模式都可用</div>
+    <div style={{ marginTop: 8 }}>普通搜索也能用</div>
     <SyntaxList>{syntaxRows(sheetTokenExamples)}</SyntaxList>
   </div>
 )
@@ -211,6 +209,7 @@ export function SearchField(props: ISearchFieldProps) {
             <Button
               icon="small-cross"
               variant="minimal"
+              aria-label="清空"
               onClick={() => props.onKeywordChange('')}
             />
           )}

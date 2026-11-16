@@ -63,7 +63,6 @@ export function DisplayLanguageBar({
           selected={displayLanguages}
           onToggle={onToggle}
           onReorder={onReorder}
-          caption="勾上的语言会显示在每条结果里，上下顺序就是显示顺序。"
         />
       </LanguageDrawer>
     </Bar>

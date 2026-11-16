@@ -1,6 +1,10 @@
 import { Checkbox, Colors, Icon } from '@blueprintjs/core'
 import styled from '@emotion/styled'
-import { languageOptions, orderActiveFirst } from '@/utils/language'
+import {
+  inlineNames,
+  languageOptions,
+  orderActiveFirst,
+} from '@/utils/language'
 import { usePointerReorder } from '@/utils/usePointerReorder'
 
 const LIFT_SHADOW =
@@ -13,7 +17,7 @@ const Container = styled.div<{ $touch: boolean }>(({ $touch }) => ({
 
 const Caption = styled.p<{ $touch: boolean }>(({ $touch }) => ({
   margin: 0,
-  padding: $touch ? '0 4px 10px' : '6px 8px 8px',
+  padding: $touch ? '10px 4px 0' : '8px 8px 6px',
   maxWidth: $touch ? 'none' : 260,
   fontSize: 12,
   lineHeight: 1.5,
@@ -94,13 +98,6 @@ const Name = styled.span({
   gap: 8,
 })
 
-const Hint = styled.span({
-  marginLeft: 'auto',
-  fontSize: 11,
-  color: Colors.GRAY3,
-  whiteSpace: 'nowrap',
-})
-
 const Divider = styled.div({
   height: 1,
   margin: '4px 6px',
@@ -112,9 +109,8 @@ export interface ILanguageListProps {
   selected: string[]
   onToggle: (code: string) => void
   onReorder: (from: number, to: number) => void
-  caption: string
-  /** Shown on the first row when more than one is picked; the list does not know which group it is. */
-  firstHint?: string
+  /** Shown below the rows only when more than one is picked; the list does not know which group it is. */
+  caption?: string
   /** Touch sized rows, for the bottom drawers. */
   touch?: boolean
 }
@@ -129,7 +125,6 @@ export function LanguageList({
   onToggle,
   onReorder,
   caption,
-  firstHint,
   touch = false,
 }: ILanguageListProps) {
   const { draggingIndex, handleProps } = usePointerReorder({
@@ -146,7 +141,6 @@ export function LanguageList({
 
   return (
     <Container $touch={touch}>
-      <Caption $touch={touch}>{caption}</Caption>
       {/* The rows stay in one DOM order and are laid out by `order`: React moves a reordered
           keyed node, and moving it drops the pointer capture and focus of the handle being
           dragged mid-gesture. */}
@@ -168,7 +162,7 @@ export function LanguageList({
                   $touch={touch}
                   role="button"
                   tabIndex={0}
-                  aria-label={`拖动调整${label}的顺序`}
+                  aria-label={`调整${inlineNames(label)}的顺序`}
                   {...handleProps(rank)}
                 >
                   <Icon icon="drag-handle-vertical" size={14} />
@@ -182,14 +176,7 @@ export function LanguageList({
                 // Emptying the group has no use, so the last one picked cannot be unticked.
                 disabled={isSelected && !canUntick}
                 onChange={() => onToggle(code)}
-                labelElement={
-                  <Name>
-                    {label}
-                    {rank === 0 && selected.length > 1 && firstHint && (
-                      <Hint>{firstHint}</Hint>
-                    )}
-                  </Name>
-                }
+                labelElement={<Name>{label}</Name>}
               />
             </Row>
           )
@@ -198,6 +185,18 @@ export function LanguageList({
           <Divider style={{ order: selected.length }} />
         )}
       </List>
+      {/* Below every row, so its coming and going never shifts one. The bottom drawer grows
+          upwards, though, so there it keeps its space while hidden or the rows would rise. */}
+      {caption &&
+        (selected.length > 1 ? (
+          <Caption $touch={touch}>{caption}</Caption>
+        ) : (
+          touch && (
+            <Caption $touch aria-hidden style={{ visibility: 'hidden' }}>
+              {caption}
+            </Caption>
+          )
+        ))}
     </Container>
   )
 }

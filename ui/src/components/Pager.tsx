@@ -33,9 +33,7 @@ export function Pager(props: IPagerProps) {
   let lastPage: number | undefined
   for (const page of pages) {
     if (lastPage !== undefined && page !== lastPage + 1) {
-      children.push(
-        <Button key={`before${page}`} text="..." disabled minimal />,
-      )
+      children.push(<Button key={`before${page}`} text="…" disabled minimal />)
     }
     children.push(renderPageButton(page, props))
 
@@ -57,10 +55,24 @@ function renderPageButton(page: number, props: IPagerProps) {
     )
   }
   if (page === props.current - 1) {
-    return <Button key={page} icon="chevron-left" onClick={handleClick} />
+    return (
+      <Button
+        key={page}
+        icon="chevron-left"
+        aria-label="上一页"
+        onClick={handleClick}
+      />
+    )
   }
   if (page === props.current + 1) {
-    return <Button key={page} endIcon="chevron-right" onClick={handleClick} />
+    return (
+      <Button
+        key={page}
+        endIcon="chevron-right"
+        aria-label="下一页"
+        onClick={handleClick}
+      />
+    )
   }
   if (page === 1) {
     return (

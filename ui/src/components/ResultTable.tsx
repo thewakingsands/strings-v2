@@ -234,7 +234,7 @@ export function ResultTable(props: IResultTableProps) {
               {item.sheet}#{item.rowId}
               <br />
               <LinkButton onClick={() => props.onContextButtonClick?.(item)}>
-                搜索上下文
+                查看上下文
               </LinkButton>
               {canExpand && (
                 <ExpandToggle

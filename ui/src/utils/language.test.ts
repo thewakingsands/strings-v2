@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   defaultDisplayLanguages,
   defaultQueryLanguages,
+  inlineNames,
   orderActiveFirst,
   readStoredDisplayLanguages,
   readStoredQueryLanguages,
@@ -203,5 +204,23 @@ describe('storage that is not available', () => {
     Reflect.deleteProperty(globalThis, 'localStorage')
     expect(readStoredQueryLanguages()).toEqual([...defaultQueryLanguages])
     expect(() => writeStoredQueryLanguages(['ja'])).not.toThrow()
+  })
+})
+
+describe('inlineNames', () => {
+  it('leaves a name that is Chinese at both ends alone', () => {
+    expect(inlineNames('简体中文')).toBe('简体中文')
+  })
+
+  it('pads a Latin name on both sides', () => {
+    expect(inlineNames('English')).toBe(' English ')
+  })
+
+  it('pads only the end of a run that ends in Latin', () => {
+    expect(inlineNames('简体中文、English')).toBe('简体中文、English ')
+  })
+
+  it('pads only the start of a run that starts in Latin', () => {
+    expect(inlineNames('English、日本語')).toBe(' English、日本語')
   })
 })

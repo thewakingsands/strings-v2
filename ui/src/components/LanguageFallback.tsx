@@ -1,7 +1,13 @@
-import { Button, Colors, NonIdealState, Spinner } from '@blueprintjs/core'
+import {
+  Button,
+  Colors,
+  NonIdealState,
+  Spinner,
+  Tooltip,
+} from '@blueprintjs/core'
 import styled from '@emotion/styled'
 import type { LanguageHits } from '@/search/languageProbe'
-import { languageMap } from '@/utils/language'
+import { inlineNames, languageMap } from '@/utils/language'
 
 const State = styled(NonIdealState)({
   minHeight: 200,
@@ -81,40 +87,54 @@ export function LanguageFallback({
   onReplace,
   onAdd,
 }: ILanguageFallbackProps) {
+  const searched = inlineNames(searchedLanguages.map(languageName).join('、'))
+  const description =
+    !loading && ranked.length === 0
+      ? `所有语言里都没有找到“${keyword}”`
+      : searchedLanguages.length > 1
+        ? `在${searched}里都没有找到“${keyword}”`
+        : `在${searched}里没有找到“${keyword}”`
+
   return (
     <State
       icon="search"
-      description={`在 ${searchedLanguages.map(languageName).join('、')} 里没有找到“${keyword}”`}
+      description={description}
       action={
         loading ? (
           <Probing>
             <Spinner size={16} />
-            正在看其他语言…
+            正在查其他语言…
           </Probing>
         ) : ranked.length > 0 ? (
           <Box>
             <BoxHeader>其他语言里有：</BoxHeader>
             {ranked.map(({ lang, total }, i) => {
               const name = languageName(lang)
+              const only = `仅搜索${inlineNames(name)}`.trim()
+              const also = `同时搜索${inlineNames(name)}`.trim()
               return (
                 <Hit key={lang}>
                   <HitName>{name}</HitName>
                   <HitCount>{total.toLocaleString()} 条</HitCount>
-                  <Button
-                    size="small"
-                    intent={i === 0 ? 'primary' : 'none'}
-                    onClick={() => onReplace(lang)}
-                  >
-                    改搜 {name}
-                  </Button>
-                  <Button
-                    size="small"
-                    variant="minimal"
-                    intent="primary"
-                    onClick={() => onAdd(lang)}
-                  >
-                    也搜
-                  </Button>
+                  <Tooltip content={only} placement="top">
+                    <Button
+                      icon="search"
+                      size="small"
+                      variant="minimal"
+                      intent={i === 0 ? 'primary' : 'none'}
+                      aria-label={only}
+                      onClick={() => onReplace(lang)}
+                    />
+                  </Tooltip>
+                  <Tooltip content={also} placement="top">
+                    <Button
+                      icon="plus"
+                      size="small"
+                      variant="minimal"
+                      aria-label={also}
+                      onClick={() => onAdd(lang)}
+                    />
+                  </Tooltip>
                 </Hit>
               )
             })}

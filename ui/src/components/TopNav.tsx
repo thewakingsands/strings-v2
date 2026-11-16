@@ -28,7 +28,7 @@ export function TopNav() {
 function MoreToolsButton() {
   return (
     <Popover content={<MoreToolsMenu />}>
-      <Button icon="more" intent="primary" />
+      <Button icon="more" intent="primary" aria-label="更多" />
     </Popover>
   )
 }

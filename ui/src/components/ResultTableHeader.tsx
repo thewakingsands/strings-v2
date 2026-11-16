@@ -1,6 +1,6 @@
 import { Button, Colors, Popover } from '@blueprintjs/core'
 import styled from '@emotion/styled'
-import { languageMap, languageOptions } from '@/utils/language'
+import { inlineNames, languageMap, languageOptions } from '@/utils/language'
 import { usePointerReorder } from '@/utils/usePointerReorder'
 import { MOBILE_BREAKPOINT } from './breakpoints'
 import { LanguageList } from './LanguageList'
@@ -177,8 +177,8 @@ export function ResultTableHeader({
               <HideButton
                 type="button"
                 $right={clearsAddSlot ? ADD_SLOT_WIDTH + 6 : 6}
-                title={`隐藏${label}列`}
-                aria-label={`隐藏${label}列`}
+                title="隐藏此列"
+                aria-label={`隐藏${inlineNames(label)}列`}
                 onClick={() => onHideLanguage(lang)}
               >
                 ✕
@@ -196,7 +196,6 @@ export function ResultTableHeader({
                 selected={displayLanguages}
                 onToggle={onToggleLanguage}
                 onReorder={onReorderDisplayLanguages}
-                caption="勾上的语言显示为结果的列，上下顺序就是列的左右顺序。"
               />
             }
           >
@@ -204,7 +203,7 @@ export function ResultTableHeader({
               icon="plus"
               variant="minimal"
               size="small"
-              aria-label="添加语言列"
+              aria-label="调整显示语言"
             />
           </Popover>
         </AddSlot>

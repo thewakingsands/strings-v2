@@ -22,7 +22,7 @@ export interface ISearchBarProps extends ISearchFieldProps {
 export function SearchBar(props: ISearchBarProps) {
   const { previousQuery } = props
   const kw = previousQuery?.keyword?.keyword
-  const text = kw ? `返回搜索"${kw}"` : undefined
+  const text = kw ? `返回“${kw}”的结果` : undefined
 
   return (
     <Container>

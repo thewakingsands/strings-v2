@@ -1,13 +1,25 @@
-import { Colors } from '@blueprintjs/core'
+import { Classes, Colors } from '@blueprintjs/core'
 import styled from '@emotion/styled'
+import { HttpError } from '@/search/query'
 import { StyledNonIdealState } from './StyledNonIdealState'
 
 const ErrorNonIdealState = styled(StyledNonIdealState)({
-  '.bp3-icon': {
+  [`.${Classes.ICON}`]: {
     color: Colors.RED3,
   },
 })
 
 export function SearchError(props: { error: Error }) {
-  return <ErrorNonIdealState icon="error" description={props.error.message} />
+  const { error } = props
+  return (
+    <ErrorNonIdealState
+      icon="error"
+      title={
+        error instanceof HttpError && error.status === 400
+          ? '查询有误'
+          : '搜索出错'
+      }
+      description={error.message}
+    />
+  )
 }
