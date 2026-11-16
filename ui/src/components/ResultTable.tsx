@@ -187,7 +187,7 @@ export interface IResultTableProps {
   items: StringItem[]
   onContextButtonClick?: (item: StringItem) => void
   keyword: string
-  highlightItem?: Pick<StringItem, 'sheet' | 'rowId'>
+  highlightItem?: Pick<StringItem, 'sheet' | 'index'>
 }
 
 export function ResultTable(props: IResultTableProps) {
@@ -213,7 +213,7 @@ export function ResultTable(props: IResultTableProps) {
       {items.map((item, idx) => {
         const isHighlight =
           item.sheet === props.highlightItem?.sheet &&
-          item.rowId === props.highlightItem?.rowId
+          item.index === props.highlightItem?.index
         const rowKey = `${item.sheet}#${item.rowId}`
         // Only offer the toggle where something is actually out of sight. A short value
         // is its own fragment, and an /api/items row has no fragment at all.

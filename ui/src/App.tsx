@@ -53,7 +53,10 @@ const PAGE_SIZE = 20
 export default function App() {
   const [keywordInput, setKeywordInput] = useState('')
   const [advanced, setAdvanced] = useState(false)
-  const [highlightItem, setHighlightItem] = useState<StringItem | null>(null)
+  const [highlightItem, setHighlightItem] = useState<Pick<
+    StringItem,
+    'sheet' | 'index'
+  > | null>(null)
   const [previousQuery, setPreviousQuery] = useState<ISearchQuery | null>(null)
 
   const search = useSearch(undefined)
