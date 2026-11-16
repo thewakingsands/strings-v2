@@ -19,16 +19,23 @@ import (
 // cjk text is cut into bigrams. Comparing characters, as a browser would have to, gets
 // all three wrong.
 //
+// fold, when not nil, is applied to the terms of both sides before they are compared,
+// for the fields where the search itself matches spellings that differ. A location keeps
+// the text's own term, so it marks what the text actually says.
+//
 // analysis.Token carries byte offsets, the same units search.Location wants, so the
 // offsets move across untouched.
-func termLocations(analyzer analysis.Analyzer, q, text string) search.TermLocationMap {
+func termLocations(analyzer analysis.Analyzer, fold func(string) string, q, text string) search.TermLocationMap {
 	if analyzer == nil || q == "" || text == "" {
 		return nil
+	}
+	if fold == nil {
+		fold = func(term string) string { return term }
 	}
 
 	wanted := make(map[string]struct{})
 	for _, token := range analyzer.Analyze([]byte(q)) {
-		wanted[string(token.Term)] = struct{}{}
+		wanted[fold(string(token.Term))] = struct{}{}
 	}
 	if len(wanted) == 0 {
 		return nil
@@ -37,7 +44,7 @@ func termLocations(analyzer analysis.Analyzer, q, text string) search.TermLocati
 	var locations search.TermLocationMap
 	for _, token := range analyzer.Analyze([]byte(text)) {
 		term := string(token.Term)
-		if _, ok := wanted[term]; !ok {
+		if _, ok := wanted[fold(term)]; !ok {
 			continue
 		}
 		if locations == nil {
@@ -133,7 +140,11 @@ func (s *Store) addHitFragments(
 
 	for _, lang := range pending {
 		text, _ := hit.Fields[lang].(string)
-		if locations := termLocations(analyzers[lang], q, text); len(locations) > 0 {
+		var fold func(string) string
+		if foldsKana(lang) {
+			fold = foldKana
+		}
+		if locations := termLocations(analyzers[lang], fold, q, text); len(locations) > 0 {
 			if hit.Locations == nil {
 				hit.Locations = make(search.FieldTermLocationMap)
 			}

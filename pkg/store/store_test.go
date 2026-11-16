@@ -110,6 +110,9 @@ func TestParseSearchQueryBoostsByLanguageOrder(t *testing.T) {
 	}
 
 	for i, disjunct := range disMax.disjuncts {
+		if kana, ok := disjunct.(*kanaMatchQuery); ok {
+			disjunct = kana.match
+		}
 		matchQuery, ok := disjunct.(*query.MatchQuery)
 		if !ok {
 			t.Fatalf("disjunct %d type = %T, want *query.MatchQuery", i, disjunct)
@@ -388,5 +391,115 @@ func TestGetBySheetHasNoHighlights(t *testing.T) {
 	}
 	if got := result.Items[0].Values["en"]; got != "sardine" {
 		t.Errorf("values[en] = %q, want %q", got, "sardine")
+	}
+}
+
+func TestSearchMatchesEitherKanaScript(t *testing.T) {
+	st := newKanaTestStore(t)
+
+	cases := []struct{ query, rowID string }{
+		{"てすと", "4"},  // hiragana typed, katakana stored
+		{"ニホンゴ", "5"}, // and the reverse
+	}
+	for _, tc := range cases {
+		result, err := st.Search(tc.query, []string{"ja"}, SheetFilter{}, 0, 10, kanaTestFields)
+		if err != nil {
+			t.Fatalf("search %q: %v", tc.query, err)
+		}
+		if rankOf(result.Items, "Kana", tc.rowID) != 0 {
+			t.Errorf("search %q = %v, want Kana#%s first", tc.query, rowIDsOf(result.Items), tc.rowID)
+		}
+	}
+}
+
+func TestSearchRanksTheTypedKanaScriptFirst(t *testing.T) {
+	st := newKanaTestStore(t)
+
+	cases := []struct{ query, typed, other string }{
+		{"カタカナ", "1", "2"},
+		{"かたかな", "2", "1"},
+	}
+	for _, tc := range cases {
+		result, err := st.Search(tc.query, []string{"ja"}, SheetFilter{}, 0, 10, kanaTestFields)
+		if err != nil {
+			t.Fatalf("search %q: %v", tc.query, err)
+		}
+		typed, other := rankOf(result.Items, "Kana", tc.typed), rankOf(result.Items, "Kana", tc.other)
+		if typed == -1 || other == -1 || typed > other {
+			t.Errorf("search %q = %v, want Kana#%s above Kana#%s",
+				tc.query, rowIDsOf(result.Items), tc.typed, tc.other)
+		}
+	}
+}
+
+// A row holding the word in both scripts must not collect a score for each: the
+// spellings of a term are combined by dis_max, not summed.
+func TestSearchDoesNotRewardBothKanaScriptsInOneRow(t *testing.T) {
+	st := newKanaTestStore(t)
+
+	q := parseSearchQuery("カタカナ", []string{"ja"}, SheetFilter{})
+	alone, both := scoreOf(t, st, q, "Kana@1"), scoreOf(t, st, q, "Kana@3")
+	if alone <= 0 || both <= 0 {
+		t.Fatalf("scores = %v, %v; want both rows matched", alone, both)
+	}
+	if both > alone {
+		t.Errorf("both scripts scored %v, above the typed word alone at %v", both, alone)
+	}
+}
+
+// Folding must leave a query without kana exactly as it was, down to the score.
+func TestSearchWithoutKanaScoresAsBefore(t *testing.T) {
+	st := newKanaTestStore(t)
+
+	for _, tc := range []struct {
+		query string
+		langs []string
+	}{
+		{"漢字", []string{"ja"}},
+		{"kanji", []string{"en", "ja"}},
+		{"漢字", []string{"chs", "ja", "en"}},
+	} {
+		folded := parseSearchQuery(tc.query, tc.langs, SheetFilter{})
+		plain := unfoldKana(folded)
+
+		for _, docID := range []string{"Kana@6", "Kana@7"} {
+			got, want := scoreOf(t, st, folded, docID), scoreOf(t, st, plain, docID)
+			if want <= 0 {
+				t.Fatalf("%q in %v: %s did not match", tc.query, tc.langs, docID)
+			}
+			if got != want {
+				t.Errorf("%q in %v: %s scored %v, want %v as a plain match",
+					tc.query, tc.langs, docID, got, want)
+			}
+		}
+	}
+}
+
+// unfoldKana replaces the kana folding clauses parseSearchQuery builds with the plain
+// match queries they wrap.
+func unfoldKana(q query.Query) query.Query {
+	switch q := q.(type) {
+	case *kanaMatchQuery:
+		return q.match
+	case *disMaxQuery:
+		disjuncts := make([]query.Query, len(q.disjuncts))
+		for i, disjunct := range q.disjuncts {
+			disjuncts[i] = unfoldKana(disjunct)
+		}
+		return newDisMaxQuery(disjuncts)
+	}
+	return q
+}
+
+func TestSearchHighlightsTheOtherKanaScript(t *testing.T) {
+	st := newKanaTestStore(t)
+
+	result, err := st.Search("てすと", []string{"ja"}, SheetFilter{}, 0, 10, kanaTestFields)
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	item := itemAt(t, result, "Kana", "4")
+	if got := item.Highlights["ja"]; !strings.Contains(got, "<mark>テスト</mark>") {
+		t.Errorf("highlights[ja] = %q, want the katakana marked", got)
 	}
 }

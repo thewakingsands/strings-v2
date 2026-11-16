@@ -155,6 +155,12 @@ curl "http://127.0.0.1:8080/api/search?lang=chs,en,ja&sheet=Item&q=onion"
 
 Supported codes are `chs`, `tc`, `en`, `de`, `fr`, `ja`, `ko`.
 
+`ja` matches hiragana and katakana interchangeably: `q=かたかな` finds a row that spells
+it `カタカナ`, and the reverse. Each part of the query counts in full where it matches
+the script it was typed in and for less where it matches only the other one, so the
+spelling typed ranks first. `meta.total` grows accordingly. A query with no kana in it
+scores exactly as it did before. The other languages are not folded.
+
 `fields` chooses which language columns come back and defaults to `chs,tc,en,ja`. It is
 independent of `lang`: searching a language that `fields` leaves out is allowed, and
 that language is simply absent from the response.
@@ -207,6 +213,9 @@ curl -G "http://127.0.0.1:8080/api/search" --data-urlencode "lang=chs,en" \
   indexed as pairs of characters, which is why the plain search cannot find a single
   character like `鲈` and `*鲈*` can; it is also why its highlight covers the pairs
   `*鲈*` matched, not the character alone.
+- In `ja`, a word or `ja:` clause matches either kana script as the plain search does.
+  A quoted phrase such as `"かたかな"` matches the script exactly as typed, and so do
+  fuzzy (`~`), wildcard and regular expression clauses.
 - A query that does not parse is rejected with `400 invalid query: ...`, and an unknown
   `mode` with `400 invalid mode: ...`. Leaving `mode` out, or `mode=simple`, is the plain
   search.
@@ -242,7 +251,8 @@ curl -G "http://127.0.0.1:8080/api/search" --data-urlencode "lang=chs,en" \
   come back a comparable length rather than one snippet beside thousands of characters.
 - Matching for a language outside `lang` runs that language's own analyzer, so it agrees
   with the index: quotes are separators, English is stemmed, and CJK is cut into bigrams.
-  A query typed with `"Software"` therefore highlights a value stored with `“Software”`.
+  A query typed with `"Software"` therefore highlights a value stored with `“Software”`,
+  and a `ja` column marks a word in either kana script, as the search would match it.
 - `GET /api/items` does no matching and returns no `highlights` at all.
 
 Before this split, `values` carried the truncated snippet for the searched language,

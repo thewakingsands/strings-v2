@@ -186,6 +186,84 @@ func TestParseAdvancedQueryWeightsLanguagesLikePlainSearch(t *testing.T) {
 	}
 }
 
+func kanaAdvancedSearch(t *testing.T, q string, langs []string) []string {
+	t.Helper()
+
+	result, err := newKanaTestStore(t).AdvancedSearch(q, langs, SheetFilter{}, 0, 100, kanaTestFields)
+	if err != nil {
+		t.Fatalf("advanced search %q: %v", q, err)
+	}
+	return sortedRowIDsOf(result.Items)
+}
+
+func TestAdvancedSearchMatchesEitherKanaScript(t *testing.T) {
+	cases := []struct {
+		name  string
+		q     string
+		langs []string
+	}{
+		{name: "unfielded", q: "てすと", langs: []string{"ja"}},
+		{name: "unfielded across languages", q: "てすと", langs: []string{"en", "ja"}},
+		{name: "fielded", q: "ja:てすと", langs: []string{"en"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := kanaAdvancedSearch(t, tc.q, tc.langs); !slices.Contains(got, "Kana#4") {
+				t.Errorf("%q = %v, want Kana#4 stored in katakana", tc.q, got)
+			}
+		})
+	}
+}
+
+// Quoting is how a user asks for the text exactly as typed.
+func TestAdvancedSearchPhraseMatchesOnlyTheTypedKanaScript(t *testing.T) {
+	if got := kanaAdvancedSearch(t, `"てすと"`, []string{"ja"}); len(got) != 0 {
+		t.Errorf(`"てすと" = %v, want nothing: only katakana holds it`, got)
+	}
+	if got := kanaAdvancedSearch(t, `"テスト"`, []string{"ja"}); !slices.Equal(got, []string{"Kana#4"}) {
+		t.Errorf(`"テスト" = %v, want [Kana#4]`, got)
+	}
+}
+
+func TestAdvancedSearchExclusionFoldsKana(t *testing.T) {
+	if got := kanaAdvancedSearch(t, "+漢字 -かたかな", []string{"ja"}); !slices.Equal(got, []string{"Kana#6"}) {
+		t.Errorf("+漢字 -かたかな = %v, want [Kana#6] with the katakana row excluded", got)
+	}
+}
+
+func TestParseAdvancedQueryLeavesFuzzyKanaClauseAlone(t *testing.T) {
+	parsed, err := parseAdvancedQuery("てすと~1", []string{"ja"}, SheetFilter{})
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+
+	var matches []*query.MatchQuery
+	var folded int
+	var walk func(query.Query)
+	walk = func(q query.Query) {
+		switch q := q.(type) {
+		case *query.MatchQuery:
+			matches = append(matches, q)
+		case *kanaMatchQuery:
+			folded++
+		case *query.BooleanQuery:
+			for _, child := range []query.Query{q.Must, q.Should, q.MustNot, q.Filter} {
+				walk(child)
+			}
+		case *query.DisjunctionQuery:
+			for _, child := range q.Disjuncts {
+				walk(child)
+			}
+		}
+	}
+	walk(parsed)
+
+	if folded != 0 || len(matches) != 1 || matches[0].Fuzziness != 1 || matches[0].FieldVal != "ja" {
+		t.Errorf("got %d folded clauses and match clauses %+v, want one fuzzy ja match left as it was",
+			folded, matches)
+	}
+}
+
 // findDisMax returns the only dis_max inside the boolean query a query string parses to.
 func findDisMax(t *testing.T, q query.Query) *disMaxQuery {
 	t.Helper()

@@ -113,6 +113,10 @@ func parseSearchQuery(q string, langs []string, sheet SheetFilter) query.Query {
 			matchQuery.SetBoost(boost)
 		}
 
+		if foldsKana(lang) {
+			disjuncts = append(disjuncts, newKanaMatchQuery(matchQuery))
+			continue
+		}
 		disjuncts = append(disjuncts, matchQuery)
 	}
 

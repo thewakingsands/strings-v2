@@ -27,9 +27,50 @@ func parseAdvancedQuery(q string, langs []string, sheet SheetFilter) (query.Quer
 	}
 
 	nonLatin := isNonLatinQuery(strings.Join(unfieldedTexts(parsed, nil), " "))
-	textQuery := spreadOverLanguages(parsed, langs, nonLatin)
+	textQuery := foldKanaClauses(spreadOverLanguages(parsed, langs, nonLatin))
 
 	return sheet.apply(textQuery), nil
+}
+
+// foldKanaClauses lets every plain match clause on a kana folded field match either
+// script, covering the copies spreadOverLanguages made as well as clauses that named the
+// field themselves.
+//
+// Phrases stay exact, since quoting is how a user asks for the text as typed. Fuzzy,
+// wildcard and regexp clauses are not analyzed into terms the way a match clause is, so
+// they are left alone too. The query string parser only ever sets fuzziness through
+// SetFuzziness, which is why a nonzero Fuzziness identifies every fuzzy clause.
+func foldKanaClauses(q query.Query) query.Query {
+	switch q := q.(type) {
+	case *query.BooleanQuery:
+		q.Must = foldKanaClauses(q.Must)
+		q.Should = foldKanaClauses(q.Should)
+		q.MustNot = foldKanaClauses(q.MustNot)
+		q.Filter = foldKanaClauses(q.Filter)
+		return q
+	case *query.ConjunctionQuery:
+		for i, conjunct := range q.Conjuncts {
+			q.Conjuncts[i] = foldKanaClauses(conjunct)
+		}
+		return q
+	case *query.DisjunctionQuery:
+		for i, disjunct := range q.Disjuncts {
+			q.Disjuncts[i] = foldKanaClauses(disjunct)
+		}
+		return q
+	case *disMaxQuery:
+		for i, disjunct := range q.disjuncts {
+			q.disjuncts[i] = foldKanaClauses(disjunct)
+		}
+		return q
+	case *query.MatchQuery:
+		if foldsKana(q.FieldVal) && q.Fuzziness == 0 {
+			return newKanaMatchQuery(q)
+		}
+		return q
+	default:
+		return q
+	}
 }
 
 // spreadOverLanguages replaces every clause of q that names no field with a dis_max of

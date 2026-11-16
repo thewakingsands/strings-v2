@@ -244,6 +244,22 @@ func TestSearchHighlightsCJKOutsideTheSearch(t *testing.T) {
 	}
 }
 
+// The ja column folds kana in the search, so it does in a ja column the search never
+// touched too: a hiragana query marks the katakana spelling.
+func TestSearchHighlightsOtherKanaScriptOutsideTheSearch(t *testing.T) {
+	st := newKanaTestStore(t)
+
+	result, err := st.Search("てすと", []string{"chs"}, SheetFilter{}, 0, 10, kanaTestFields)
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	item := itemAt(t, result, "Kana", "4")
+
+	if got := item.Highlights["ja"]; !strings.Contains(got, "<mark>テスト</mark>") {
+		t.Errorf("highlights[ja] = %q, want the katakana marked", got)
+	}
+}
+
 func TestItemIndexMappingExposesAnalyzers(t *testing.T) {
 	m, ok := buildItemIndexMapping().(*mapping.IndexMappingImpl)
 	if !ok {
